@@ -1,0 +1,51 @@
+{
+  "name": "@router-for-me/dsh-cliproxyapi-provider",
+  "version": "0.0.1",
+  "description": "GUI-configurable CLIProxyAPI Responses provider for DeepSeek Harness",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client.js",
+    "./catalog": "./src/catalog.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "client.js", "cordis.patch.yml", "README.md", "README_EN.md"],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --test",
+    "pack:github": "npm pack"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/router-for-me/dsh-cliproxyapi-provider.git"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.6"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "3.18.1"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "private": true
+}
