@@ -50,19 +50,28 @@ function headerKey(headers, expected) {
   return Object.keys(headers ?? {}).find((key) => key.toLowerCase() === normalized)
 }
 
+function profileSyncValue(profile) {
+  const key = headerKey(profile?.headers, PROFILE_SYNC_HEADER)
+  return key === undefined ? undefined : String(profile.headers[key])
+}
+
 function profileSynchronizationPending(profile) {
-  return headerKey(profile?.headers, PROFILE_SYNC_HEADER) !== undefined
+  return profileSyncValue(profile) !== undefined
 }
 
 function profileHasRichBootstrap(profile) {
-  const key = headerKey(profile?.headers, PROFILE_SYNC_HEADER)
-  return key !== undefined && String(profile.headers[key]).startsWith('rich:')
+  return profileSyncValue(profile)?.startsWith('rich:') ?? false
 }
 
-function catalogHeadersOf(profileHeaders, configuredHeaders) {
+function mergedHeadersOf(profileHeaders, configuredHeaders) {
   const headers = { ...configuredHeaders, ...profileHeaders }
   const sync = headerKey(headers, PROFILE_SYNC_HEADER)
   if (sync !== undefined) delete headers[sync]
+  return headers
+}
+
+function catalogHeadersOf(profileHeaders, configuredHeaders) {
+  const headers = mergedHeadersOf(profileHeaders, configuredHeaders)
   const authorization = headerKey(headers, 'authorization')
   if (authorization !== undefined && headers[authorization] === PLACEHOLDER_AUTHORIZATION) {
     delete headers[authorization]
@@ -71,9 +80,7 @@ function catalogHeadersOf(profileHeaders, configuredHeaders) {
 }
 
 function profileHeadersOf(profileHeaders, configuredHeaders, hasApiKey) {
-  const headers = { ...configuredHeaders, ...profileHeaders }
-  const sync = headerKey(headers, PROFILE_SYNC_HEADER)
-  if (sync !== undefined) delete headers[sync]
+  const headers = mergedHeadersOf(profileHeaders, configuredHeaders)
 
   const authorization = headerKey(headers, 'authorization')
   if (hasApiKey) {

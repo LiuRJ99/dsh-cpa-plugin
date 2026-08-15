@@ -1,9 +1,17 @@
 window.__ModuleLoader__.load({
   id: '@router-for-me/dsh-cliproxyapi-provider',
-  factory: () => {
+  factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
+
+    const React = require('react')
+    const {
+      useEffect,
+      useMemo,
+      useState,
+      useSyncExternalStore,
+    } = React
 
     const PI_NS = 'llm-pi-ai'
     const DISCOVERY_NS = 'llm-cliproxyapi'
@@ -13,21 +21,24 @@ window.__ModuleLoader__.load({
     const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
     const PROFILE_SYNC_TIMEOUT_MS = 30000
     const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'
-    const ROW_ATTRIBUTE = 'data-dsh-provider-cpa-row'
-    const HIDDEN_ATTRIBUTE = 'data-dsh-provider-cpa-hidden'
-    const OPENED_ATTRIBUTE = 'data-dsh-provider-cpa-opened'
-    const BOOTSTRAP_ATTRIBUTE = 'data-dsh-provider-cpa-bootstrap'
-    const STYLE_ID = 'dsh-provider-cpa-model-settings'
-    const inject = ['connection', 'remote']
+    const SETTINGS_SLOT = 'settings.plugins.tab'
+    const SETTINGS_TAB_ID = 'cliproxyapi'
+    const SETTINGS_LOCALE_NS = 'settings.cliProxyApi'
+    const inject = ['connection', 'remote', 'slots', 'locale', 'settingsScope']
 
     const copy = {
       en: {
-        edit: 'Edit',
-        editLabel: 'Edit CLIProxyAPI',
+        tab: 'CLIProxyAPI',
+        title: 'CLIProxyAPI',
+        intro: 'Connect a CLIProxyAPI server and synchronize its model catalog.',
+        loading: 'Loading CLIProxyAPI settings…',
+        unavailable: 'CLIProxyAPI settings are unavailable in this Web profile.',
+        readOnly: 'Settings are read-only for this connection.',
         baseURL: 'Base URL',
         apiKey: 'API key',
         apiKeyPlaceholder: 'Optional for a keyless CLIProxyAPI server',
-        cancel: 'Cancel',
+        apiKeyConfiguredPlaceholder: 'API key already saved',
+        credentialConfiguredLabel: 'Configured',
         save: 'Save & Enable',
         saving: 'Saving…',
         saved: 'Saved. The CLIProxyAPI model catalog is synchronized.',
@@ -37,12 +48,17 @@ window.__ModuleLoader__.load({
         noModels: 'CLIProxyAPI returned no usable models.',
       },
       zh: {
-        edit: '编辑',
-        editLabel: '编辑 CLIProxyAPI',
+        tab: 'CLIProxyAPI',
+        title: 'CLIProxyAPI',
+        intro: '连接 CLIProxyAPI 服务并同步其模型目录。',
+        loading: '正在读取 CLIProxyAPI 设置…',
+        unavailable: '当前 Web 配置中无法访问 CLIProxyAPI 设置。',
+        readOnly: '当前连接的设置为只读。',
         baseURL: 'Base URL',
         apiKey: 'API Key',
         apiKeyPlaceholder: '无鉴权的 CLIProxyAPI 可留空',
-        cancel: '取消',
+        apiKeyConfiguredPlaceholder: '已保存 API Key',
+        credentialConfiguredLabel: '已配置',
         save: '保存并启用',
         saving: '保存中…',
         saved: '已保存，CLIProxyAPI 模型目录已同步。',
@@ -53,131 +69,101 @@ window.__ModuleLoader__.load({
       },
     }
 
-    const stylesheet = `
-[${ROW_ATTRIBUTE}] > div > details > summary {
-  display: none !important;
-}
-
-[${ROW_ATTRIBUTE}] > div > details {
-  margin: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-[${ROW_ATTRIBUTE}] > div > details > div {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-[${ROW_ATTRIBUTE}] > div > details section[aria-label] {
-  display: none !important;
-}
-
-[${HIDDEN_ATTRIBUTE}] {
-  display: none !important;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] {
-  list-style: none;
-  border: 1px solid var(--dsw-alias-border-primary);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  padding: 14px 16px;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-row-head,
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-form {
-  display: grid;
-  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
-  gap: 12px 16px;
-  align-items: center;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--dsw-alias-border-primary);
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-form[hidden] {
-  display: none !important;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] label {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 38px;
-  border: 1px solid var(--dsw-alias-border-primary);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  padding: 8px 12px;
-  font: inherit;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] button {
-  cursor: pointer;
-  border: 1px solid var(--dsw-alias-border-primary);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  padding: 8px 14px;
-  font: inherit;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] button.dsh-cpa-primary {
-  border-color: transparent;
-  background: var(--dsw-alias-brand-primary, #4d6bfe);
-  color: #fff;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] button:disabled {
-  cursor: default;
-  opacity: .55;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-actions,
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-feedback {
-  grid-column: 2;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-feedback {
-  min-height: 1.4em;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-[${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-feedback[data-error='true'] {
-  color: #d84a4a;
-}
-
-@media (max-width: 640px) {
-  [${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-form {
-    grid-template-columns: 1fr;
-  }
-
-  [${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-actions,
-  [${BOOTSTRAP_ATTRIBUTE}] .dsh-cpa-feedback {
-    grid-column: 1;
-  }
-}
-`
+    const styles = {
+      section: {
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        maxWidth: '720px',
+        padding: '24px 16px 40px',
+        margin: '0 auto',
+        color: 'var(--dsw-alias-label-primary, #1f2329)',
+      },
+      heading: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+      },
+      title: {
+        margin: 0,
+        fontSize: '16px',
+        fontWeight: 600,
+      },
+      intro: {
+        margin: 0,
+        color: 'var(--dsw-alias-label-secondary, #717782)',
+        fontSize: '13px',
+        lineHeight: 1.5,
+      },
+      form: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+      },
+      field: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '7px',
+      },
+      label: {
+        fontSize: '14px',
+        fontWeight: 500,
+      },
+      labelRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+      },
+      credentialStatus: {
+        color: 'var(--dsw-alias-label-secondary, #717782)',
+        fontSize: '12px',
+        fontWeight: 400,
+      },
+      input: {
+        boxSizing: 'border-box',
+        width: '100%',
+        minHeight: '38px',
+        border: '1px solid var(--dsw-alias-border-primary, rgba(31, 35, 41, 0.14))',
+        borderRadius: '10px',
+        background: 'var(--dsw-alias-bg-layer-1, transparent)',
+        color: 'var(--dsw-alias-label-primary, #1f2329)',
+        padding: '8px 12px',
+        font: 'inherit',
+      },
+      status: {
+        margin: 0,
+        color: 'var(--dsw-alias-label-secondary, #717782)',
+        fontSize: '13px',
+        lineHeight: 1.4,
+      },
+      statusError: {
+        margin: 0,
+        color: '#d84a4a',
+        fontSize: '13px',
+        lineHeight: 1.4,
+      },
+      actions: {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '10px',
+        paddingTop: '4px',
+      },
+      button: {
+        cursor: 'pointer',
+        minHeight: '38px',
+        border: '1px solid transparent',
+        borderRadius: '10px',
+        background: 'var(--dsw-alias-brand-primary, #111827)',
+        color: '#fff',
+        padding: '8px 14px',
+        font: 'inherit',
+      },
+      buttonDisabled: {
+        cursor: 'default',
+        opacity: 0.55,
+      },
+    }
 
     function unwrap(response) {
       if (!response || !response.result || !response.result.ok) {
@@ -200,71 +186,6 @@ window.__ModuleLoader__.load({
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         throw new Error(messages.baseInvalid)
       }
-    }
-
-    function modelsHeading() {
-      return [...document.querySelectorAll('dialog h2, [role="dialog"] h2')].find((heading) => {
-        const text = heading.textContent.trim()
-        return text === 'Models' || text === '模型'
-      })
-    }
-
-    function configuredRows() {
-      return [...document.querySelectorAll('li')].filter((row) => {
-        if (row.hasAttribute(BOOTSTRAP_ATTRIBUTE)) return false
-        return [...row.querySelectorAll('button[aria-label]')].some((button) => {
-          return (button.getAttribute('aria-label') || '').includes(PROVIDER)
-        })
-      })
-    }
-
-    function directTextInputFields(body) {
-      return [...body.children].filter((child) => {
-        return [...child.children].some((element) => element.matches('input[type="text"]'))
-      })
-    }
-
-    function markHidden(element) {
-      if (element && !element.hasAttribute(HIDDEN_ATTRIBUTE)) element.setAttribute(HIDDEN_ATTRIBUTE, '')
-    }
-
-    function decorateConfiguredRows() {
-      const rows = configuredRows()
-      for (const row of rows) {
-        if (!row.hasAttribute(ROW_ATTRIBUTE)) row.setAttribute(ROW_ATTRIBUTE, '')
-        // Installed providers keep Edit as their sole row action. The Models
-        // page orders Edit first and conditional destructive actions after it.
-        const header = row.firstElementChild
-        const actionButtons = header ? [...header.querySelectorAll('button')] : []
-        for (const action of actionButtons.slice(1)) markHidden(action)
-
-        const details = row.querySelector(':scope > div > details')
-        if (!details) continue
-        if (!details.open) {
-          details.open = true
-          details.setAttribute(OPENED_ATTRIBUTE, '')
-        }
-        const body = [...details.children].find((child) => child.tagName !== 'SUMMARY')
-        if (!body) continue
-
-        const textFields = directTextInputFields(body)
-        for (const field of textFields.slice(0, -1)) markHidden(field)
-        for (const select of body.querySelectorAll(':scope > div > select')) markHidden(select.parentElement)
-        for (const catalog of body.querySelectorAll(':scope > section[aria-label]')) markHidden(catalog)
-      }
-      return rows
-    }
-
-    function languageFor(heading) {
-      return heading.textContent.trim() === '模型' ? 'zh' : 'en'
-    }
-
-    function element(tag, options = {}) {
-      const node = document.createElement(tag)
-      if (options.className) node.className = options.className
-      if (options.text !== undefined) node.textContent = options.text
-      if (options.type) node.type = options.type
-      return node
     }
 
     function syncValueOf(headers) {
@@ -301,12 +222,11 @@ window.__ModuleLoader__.load({
       }
     }
 
-    async function waitForProfileSynchronization(api, remote, baseURL, initial, messages) {
+    function waitForProfileSynchronization(scope, baseURL, initial, messages) {
       let done = false
-      let reading = false
-      let rerun = false
       let timeout
-      let disposeEvent = () => {}
+      let disposeScope = () => {}
+      const initialRevision = Number.isInteger(initial?.revision) ? initial.revision : undefined
       let resolveReady
       let rejectReady
       const ready = new Promise((resolve, reject) => {
@@ -318,47 +238,34 @@ window.__ModuleLoader__.load({
         if (done) return
         done = true
         if (timeout !== undefined) clearTimeout(timeout)
-        disposeEvent()
+        disposeScope()
         if (error) rejectReady(error)
         else resolveReady(profile)
       }
-      const inspect = (namespace) => {
+      const inspect = (namespace, requireNewRevision) => {
+        if (
+          requireNewRevision
+          && initialRevision !== undefined
+          && (!Number.isInteger(namespace?.revision) || namespace.revision <= initialRevision)
+        ) return
         const profile = namespace?.value?.providers?.[PROVIDER]
         if (!profile || profile.baseURL !== baseURL) return
         const pending = syncValueOf(profile.headers)
         if (pending !== undefined) return
         finish(undefined, profile)
       }
-      const refresh = async () => {
-        if (done) return
-        if (reading) {
-          rerun = true
-          return
-        }
-        reading = true
-        try {
-          do {
-            rerun = false
-            const described = unwrap(await api.settings.describe({}))
-            inspect(described.namespaces.find((entry) => entry.ns === PI_NS))
-          } while (rerun && !done)
-        } catch (error) {
-          finish(error instanceof Error ? error : new Error(String(error)))
-        } finally {
-          reading = false
-        }
+      const refresh = () => {
+        if (!done) inspect(scope.getSnapshot(), true)
       }
 
-      disposeEvent = remote.$on('settings/document-updated', (ns) => {
-        if (ns === PI_NS) void refresh()
-      })
+      disposeScope = scope.subscribe(refresh)
       timeout = setTimeout(() => finish(new Error(messages.syncTimeout)), PROFILE_SYNC_TIMEOUT_MS)
-      inspect(initial)
-      if (!done) void refresh()
+      inspect(initial, false)
+      refresh()
       return ready
     }
 
-    async function installInitialProfile(api, remote, baseURL, apiKey, messages) {
+    async function installInitialProfile(api, scope, baseURL, apiKey, messages) {
       const described = unwrap(await api.settings.describe({}))
       const namespace = described.namespaces.find((entry) => entry.ns === PI_NS)
       if (!namespace) throw new Error('The llm-pi-ai settings namespace is unavailable')
@@ -386,172 +293,217 @@ window.__ModuleLoader__.load({
         }],
         ...(Number.isInteger(namespace.revision) ? { expectedRevision: namespace.revision } : {}),
       }))
-      return waitForProfileSynchronization(api, remote, baseURL, updated, messages)
+      return waitForProfileSynchronization(scope, baseURL, updated, messages)
     }
 
-    function buildBootstrapRow(api, remote, heading) {
-      const messages = copy[languageFor(heading)]
-      const row = element('li')
-      row.setAttribute(BOOTSTRAP_ATTRIBUTE, '')
+    function profileOf(snapshot) {
+      const value = snapshot?.value
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+      const providers = value.providers
+      if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined
+      return providers[PROVIDER]
+    }
 
-      const head = element('div', { className: 'dsh-cpa-row-head' })
-      head.append(element('span', { className: 'dsh-cpa-name', text: PROVIDER }))
-      const edit = element('button', { type: 'button', text: messages.edit })
-      edit.setAttribute('aria-label', messages.editLabel)
-      edit.setAttribute('aria-expanded', 'false')
-      head.append(edit)
-
-      const form = element('form', { className: 'dsh-cpa-form' })
-      form.hidden = true
-      form.noValidate = true
-
-      const baseId = 'dsh-cpa-base-url'
-      const keyId = 'dsh-cpa-api-key'
-      const baseLabel = element('label', { text: messages.baseURL })
-      baseLabel.htmlFor = baseId
-      const baseInput = element('input')
-      baseInput.id = baseId
-      baseInput.type = 'url'
-      baseInput.value = DEFAULT_BASE_URL
-      baseInput.autocomplete = 'url'
-
-      const keyLabel = element('label', { text: messages.apiKey })
-      keyLabel.htmlFor = keyId
-      const keyInput = element('input')
-      keyInput.id = keyId
-      keyInput.type = 'password'
-      keyInput.autocomplete = 'off'
-      keyInput.placeholder = messages.apiKeyPlaceholder
-
-      const feedback = element('div', { className: 'dsh-cpa-feedback' })
-      feedback.setAttribute('role', 'status')
-      feedback.setAttribute('aria-live', 'polite')
-
-      const actions = element('div', { className: 'dsh-cpa-actions' })
-      const cancel = element('button', { type: 'button', text: messages.cancel })
-      const save = element('button', { className: 'dsh-cpa-primary', type: 'submit', text: messages.save })
-      actions.append(cancel, save)
-      form.append(baseLabel, baseInput, keyLabel, keyInput, feedback, actions)
-      row.append(head, form)
-
-      const setOpen = (open) => {
-        form.hidden = !open
-        edit.setAttribute('aria-expanded', String(open))
-        if (open) baseInput.focus()
+    function messagesOf(t) {
+      return {
+        baseRequired: t('baseRequired'),
+        baseInvalid: t('baseInvalid'),
+        noModels: t('noModels'),
+        syncTimeout: t('syncTimeout'),
       }
-      edit.addEventListener('click', () => setOpen(form.hidden))
-      cancel.addEventListener('click', () => setOpen(false))
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault()
-        const baseURL = baseInput.value.trim().replace(/\/+$/, '')
-        const apiKey = keyInput.value.trim()
-        save.disabled = true
-        cancel.disabled = true
-        baseInput.disabled = true
-        keyInput.disabled = true
-        form.setAttribute('aria-busy', 'true')
-        feedback.dataset.error = 'false'
-        feedback.setAttribute('role', 'status')
-        feedback.textContent = ''
-        save.textContent = messages.saving
-        try {
-          validBaseURL(baseURL, messages)
-          await installInitialProfile(api, remote, baseURL, apiKey, messages)
-          keyInput.value = ''
-          feedback.textContent = messages.saved
-        } catch (error) {
-          feedback.dataset.error = 'true'
-          feedback.setAttribute('role', 'alert')
-          feedback.textContent = error instanceof Error ? error.message : String(error)
-        } finally {
-          save.disabled = false
-          cancel.disabled = false
-          baseInput.disabled = false
-          keyInput.disabled = false
-          form.removeAttribute('aria-busy')
-          save.textContent = messages.save
+    }
+
+    async function credentialStatusOf(api) {
+      try {
+        const described = unwrap(await api.credentials.describe({ refs: [CREDENTIAL_REF] }))
+        return described.credentials[CREDENTIAL_REF]?.configured === true
+          ? 'configured'
+          : 'missing'
+      } catch {
+        return 'unknown'
+      }
+    }
+
+    function SettingsTab({ api, remote, scope, t }) {
+      const snapshot = useSyncExternalStore(
+        (listener) => scope.subscribe(listener),
+        () => scope.getSnapshot(),
+        () => scope.getSnapshot(),
+      )
+      const profile = profileOf(snapshot)
+      const [baseURL, setBaseURL] = useState(DEFAULT_BASE_URL)
+      const [apiKey, setApiKey] = useState('')
+      const [loadedRevision, setLoadedRevision] = useState(undefined)
+      const [credentialStatus, setCredentialStatus] = useState('unknown')
+      const [saving, setSaving] = useState(false)
+      const [feedback, setFeedback] = useState({ text: '', error: false })
+      const messages = useMemo(() => messagesOf(t), [t])
+      const readOnly = snapshot.status === 'ready' && !snapshot.writable
+      const canSave = snapshot.status === 'ready' && snapshot.writable && !saving
+
+      useEffect(() => {
+        if (snapshot.status !== 'ready' || snapshot.revision === undefined) return
+        if (snapshot.revision === loadedRevision) return
+        setBaseURL(typeof profile?.baseURL === 'string' && profile.baseURL.length > 0
+          ? profile.baseURL
+          : DEFAULT_BASE_URL)
+        setApiKey('')
+        setLoadedRevision(snapshot.revision)
+      }, [loadedRevision, profile?.baseURL, snapshot.revision, snapshot.status])
+
+      useEffect(() => {
+        let active = true
+        const refresh = async () => {
+          const status = await credentialStatusOf(api)
+          if (active) setCredentialStatus(status)
         }
-      })
-      return row
-    }
+        void refresh()
+        const dispose = remote.$on('credentials/updated', (ref) => {
+          if (ref === CREDENTIAL_REF) void refresh()
+        })
+        return () => {
+          active = false
+          dispose()
+        }
+      }, [api, remote])
 
-    function ensureBootstrapRow(api, remote, heading, hasConfiguredRow) {
-      const existing = document.querySelector(`[${BOOTSTRAP_ATTRIBUTE}]`)
-      if (hasConfiguredRow) {
-        existing?.remove()
-        return
+      const submit = async (event) => {
+        event.preventDefault()
+        if (!canSave) return
+        const nextBaseURL = baseURL.trim().replace(/\/+$/, '')
+        const nextApiKey = apiKey.trim()
+        setSaving(true)
+        setFeedback({ text: '', error: false })
+        try {
+          validBaseURL(nextBaseURL, messages)
+          await installInitialProfile(api, scope, nextBaseURL, nextApiKey, messages)
+          setApiKey('')
+          setFeedback({ text: t('saved'), error: false })
+        } catch (error) {
+          setFeedback({
+            text: error instanceof Error ? error.message : String(error),
+            error: true,
+          })
+        } finally {
+          setSaving(false)
+        }
       }
-      if (existing) return
-      const section = heading.parentElement
-      const list = section && section.querySelector('ul')
-      if (list) list.append(buildBootstrapRow(api, remote, heading))
-    }
 
-    function cleanupDOM() {
-      document.querySelector(`[${BOOTSTRAP_ATTRIBUTE}]`)?.remove()
-      for (const hidden of document.querySelectorAll(`[${HIDDEN_ATTRIBUTE}]`)) {
-        hidden.removeAttribute(HIDDEN_ATTRIBUTE)
-      }
-      for (const details of document.querySelectorAll(`[${OPENED_ATTRIBUTE}]`)) {
-        details.open = false
-        details.removeAttribute(OPENED_ATTRIBUTE)
-      }
-      for (const row of document.querySelectorAll(`[${ROW_ATTRIBUTE}]`)) {
-        row.removeAttribute(ROW_ATTRIBUTE)
-      }
-      document.getElementById(STYLE_ID)?.remove()
+      const statusText = snapshot.status === 'loading'
+        ? t('loading')
+        : ''
+      return React.createElement(
+        'div',
+        { style: styles.section, 'aria-busy': saving || snapshot.status === 'loading' },
+        React.createElement(
+          'div',
+          { style: styles.heading },
+          React.createElement('h2', { style: styles.title }, t('title')),
+          React.createElement('p', { style: styles.intro }, t('intro')),
+        ),
+        snapshot.status === 'unavailable'
+          ? React.createElement('p', { style: styles.statusError, role: 'alert' }, t('unavailable'))
+          : null,
+        readOnly
+          ? React.createElement('p', { style: styles.status, role: 'status' }, t('readOnly'))
+          : null,
+        statusText && snapshot.status !== 'unavailable'
+          ? React.createElement('p', { style: styles.status, role: 'status' }, statusText)
+          : null,
+        React.createElement(
+          'form',
+          { style: styles.form, onSubmit: submit, noValidate: true },
+          React.createElement(
+            'label',
+            { style: styles.field },
+            React.createElement('span', { style: styles.label }, t('baseURL')),
+            React.createElement('input', {
+              style: styles.input,
+              type: 'url',
+              value: baseURL,
+              autoComplete: 'url',
+              disabled: !canSave,
+              onChange: (event) => setBaseURL(event.currentTarget.value),
+            }),
+          ),
+          React.createElement(
+            'label',
+            { style: styles.field },
+            React.createElement(
+              'span',
+              { style: styles.labelRow },
+              React.createElement('span', { style: styles.label }, t('apiKey')),
+              credentialStatus === 'configured'
+                ? React.createElement(
+                  'span',
+                  { style: styles.credentialStatus, role: 'status' },
+                  t('credentialConfiguredLabel'),
+                )
+                : null,
+            ),
+            React.createElement('input', {
+              style: styles.input,
+              type: 'password',
+              value: apiKey,
+              placeholder: credentialStatus === 'configured'
+                ? t('apiKeyConfiguredPlaceholder')
+                : t('apiKeyPlaceholder'),
+              autoComplete: 'off',
+              disabled: !canSave,
+              onChange: (event) => setApiKey(event.currentTarget.value),
+            }),
+          ),
+          feedback.text
+            ? React.createElement(
+              'p',
+              { style: feedback.error ? styles.statusError : styles.status, role: feedback.error ? 'alert' : 'status' },
+              feedback.text,
+            )
+            : null,
+          React.createElement(
+            'div',
+            { style: styles.actions },
+            React.createElement(
+              'button',
+              {
+                type: 'submit',
+                style: canSave ? styles.button : { ...styles.button, ...styles.buttonDisabled },
+                disabled: !canSave,
+              },
+              saving ? t('saving') : t('save'),
+            ),
+          ),
+        ),
+      )
     }
 
     function apply(ctx) {
       const api = ctx.get('connection').api
       const remote = ctx.get('remote')
-      ctx.effect(() => {
-        const style = document.createElement('style')
-        style.id = STYLE_ID
-        style.textContent = stylesheet
-        document.head.append(style)
+      const locale = ctx.locale
+      const settingsScope = ctx.settingsScope
+      const t = locale.bind(SETTINGS_LOCALE_NS)
+      const scope = settingsScope.bind({ namespace: PI_NS })
 
-        let scheduledFrame
-        const reconcile = () => {
-          const heading = modelsHeading()
-          if (heading) {
-            const rows = decorateConfiguredRows()
-            ensureBootstrapRow(api, remote, heading, rows.length > 0)
-          }
-        }
-        const schedule = () => {
-          if (scheduledFrame !== undefined) return
-          scheduledFrame = requestAnimationFrame(() => {
-            scheduledFrame = undefined
-            reconcile()
-          })
-        }
-        const observer = new MutationObserver(schedule)
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ['open', 'aria-label'],
-        })
-        const disposers = [
-          remote.$on('settings/document-updated', schedule),
-          remote.$on('credentials/updated', schedule),
-          remote.$on('llm/adapters-updated', schedule),
-          ctx.on('connection/reset', schedule),
-        ]
-        schedule()
-        return () => {
-          observer.disconnect()
-          if (scheduledFrame !== undefined) cancelAnimationFrame(scheduledFrame)
-          for (const dispose of disposers) dispose()
-          cleanupDOM()
-        }
-      })
+      ctx.effect(
+        () => locale.register(SETTINGS_LOCALE_NS, copy),
+        'dsh-provider-cpa: dictionaries',
+      )
+
+      ctx.slots.inject(SETTINGS_SLOT, () => ctx.slots.register({
+        name: SETTINGS_SLOT,
+        id: SETTINGS_TAB_ID,
+        order: 30,
+        label: () => t('tab'),
+        locale: SETTINGS_LOCALE_NS,
+        inject: () => ({ api, remote, scope }),
+      }, SettingsTab))
     }
 
     exports.apply = apply
     exports.inject = inject
     exports.installInitialProfile = installInitialProfile
+    exports.settingsTab = SettingsTab
     return module.exports
   },
 })

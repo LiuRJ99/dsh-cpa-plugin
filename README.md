@@ -22,7 +22,7 @@ npx @deepseek-ai/dsh web
 
 打开 Harness 后：
 
-1. 进入 **设置 → 模型 → CLIProxyAPI**。
+1. 进入 **设置 → 插件 → CLIProxyAPI**。
 2. 填写 CLIProxyAPI 的 **API 地址**，例如
    `http://127.0.0.1:8317/v1`。
 3. 填写 **API 密钥**；无鉴权服务可以留空。

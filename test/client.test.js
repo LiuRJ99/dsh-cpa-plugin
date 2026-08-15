@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
 
-test('client bundle integrates with Models without registering a sidebar section', async () => {
+test('client bundle registers a lifecycle-owned Plugins Settings tab', async () => {
   let definition
   globalThis.window = {
     __ModuleLoader__: {
@@ -15,18 +15,61 @@ test('client bundle integrates with Models without registering a sidebar section
   try {
     await import('../client.js')
     const plugin = definition.factory((id) => {
-      throw new Error(`unexpected client dependency: ${id}`)
+      assert.equal(id, 'react')
+      return {}
     })
-    assert.deepEqual(plugin.inject, ['connection', 'remote'])
+    assert.deepEqual(plugin.inject, ['connection', 'remote', 'slots', 'locale', 'settingsScope'])
 
+    const registrations = []
+    const injections = []
+    const slots = {
+      inject(name, callback) {
+        injections.push(name)
+        return callback()
+      },
+      register(options, component) {
+        registrations.push({ options, component })
+        return () => {}
+      },
+    }
+    const locale = {
+      register(namespace, dictionaries) {
+        assert.equal(namespace, 'settings.cliProxyApi')
+        assert.deepEqual(Object.keys(dictionaries).sort(), ['en', 'zh'])
+        return () => {}
+      },
+      bind(namespace) {
+        assert.equal(namespace, 'settings.cliProxyApi')
+        return (key) => key
+      },
+    }
+    const scope = {
+      getSnapshot() {
+        return { status: 'loading', value: undefined, revision: undefined, writable: false }
+      },
+      subscribe() {
+        return () => {}
+      },
+    }
+    const settingsScope = {
+      bind(spec) {
+        assert.deepEqual(spec, { namespace: 'llm-pi-ai' })
+        return scope
+      },
+    }
     let effect
     const ctx = {
       get(name) {
         if (name === 'connection') return { api: {} }
         if (name === 'remote') return { $on() { return () => {} } }
+        if (name === 'slots') return slots
+        if (name === 'locale') return locale
+        if (name === 'settingsScope') return settingsScope
         throw new Error(`unexpected service: ${name}`)
       },
-      on() { return () => {} },
+      slots,
+      locale,
+      settingsScope,
       effect(factory) {
         effect = factory
         return () => {}
@@ -34,30 +77,33 @@ test('client bundle integrates with Models without registering a sidebar section
     }
     plugin.apply(ctx)
     assert.equal(typeof effect, 'function')
+    assert.deepEqual(injections, ['settings.plugins.tab'])
+    assert.equal(registrations.length, 1)
+    assert.equal(registrations[0].options.name, 'settings.plugins.tab')
+    assert.equal(registrations[0].options.id, 'cliproxyapi')
+    assert.equal(registrations[0].options.order, 30)
+    assert.equal(typeof registrations[0].options.inject, 'function')
+    assert.equal(typeof registrations[0].component, 'function')
   } finally {
     delete globalThis.window
   }
 })
 
-test('client refresh is event-driven and exposes basic accessibility semantics', async () => {
+test('client owns only its Settings slot and keeps the configuration accessible', async () => {
   const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /setInterval\s*\(/)
-  assert.doesNotMatch(source, /settings\.section/)
-  assert.doesNotMatch(source, /Provider name|Display name|Refresh Models/)
-  assert.match(source, /remote\.\$on\('settings\/document-updated'/)
+  assert.doesNotMatch(source, /document\./)
+  assert.doesNotMatch(source, /MutationObserver/)
+  assert.doesNotMatch(source, /querySelector(All)?\s*\(/)
+  assert.doesNotMatch(source, /modelsHeading|configuredRows|BOOTSTRAP_ATTRIBUTE|HIDDEN_ATTRIBUTE/)
+  assert.match(source, /settings\.plugins\.tab/)
+  assert.match(source, /ctx\.settingsScope/)
+  assert.match(source, /slots\.inject\(SETTINGS_SLOT/)
+  assert.match(source, /expectedRevision/)
+  assert.match(source, /scope\.subscribe\(/)
+  assert.doesNotMatch(source, /remote\.\$on\('settings\/document-updated'/)
   assert.match(source, /remote\.\$on\('credentials\/updated'/)
-  assert.match(source, /remote\.\$on\('llm\/adapters-updated'/)
-  assert.match(source, /new MutationObserver\(schedule\)/)
-  assert.match(source, /requestAnimationFrame/)
-  assert.doesNotMatch(source, /schedule\(500\)/)
-  assert.match(source, /actionButtons\.slice\(1\)/)
-  assert.match(source, /details\.open = true/)
-  assert.match(source, /querySelectorAll\(':scope > section\[aria-label\]'\)/)
-  assert.match(source, /data-dsh-provider-cpa-bootstrap/)
-  assert.match(source, /\.htmlFor =/)
-  assert.match(source, /setAttribute\('role', 'status'\)/)
-  assert.match(source, /setAttribute\('role', 'alert'\)/)
-  assert.match(source, /type: 'button'/)
+  assert.match(source, /role: 'status'/)
 })
 
 test('initial profile waits until the host writes complete model capabilities', async () => {
@@ -71,12 +117,23 @@ test('initial profile waits until the host writes complete model capabilities', 
   }
   try {
     await import('../client.js?initial-profile-sync-test')
-    const plugin = definition.factory(() => {
-      throw new Error('unexpected client dependency')
+    const plugin = definition.factory((id) => {
+      assert.equal(id, 'react')
+      return {}
     })
-    const listeners = []
+    const scopeListeners = []
     let currentNamespace = {
       ns: 'llm-pi-ai', revision: 1, value: { providers: {} },
+    }
+    let scopeSnapshot = {
+      status: 'ready', revision: 1, value: {
+        providers: {
+          CLIProxyAPI: {
+            baseURL: 'http://127.0.0.1:8317/v1',
+            headers: { authorization: 'Bearer dsh-cliproxyapi-no-key' },
+          },
+        },
+      }, writable: true,
     }
     let bootstrap
     let discoveryRequest
@@ -108,11 +165,13 @@ test('initial profile waits until the host writes complete model capabilities', 
         },
       },
     }
-    const remote = {
-      $on(event, listener) {
-        assert.equal(event, 'settings/document-updated')
-        listeners.push(listener)
-        return () => listeners.splice(listeners.indexOf(listener), 1)
+    const scope = {
+      getSnapshot() {
+        return scopeSnapshot
+      },
+      subscribe(listener) {
+        scopeListeners.push(listener)
+        return () => scopeListeners.splice(scopeListeners.indexOf(listener), 1)
       },
     }
     const messages = {
@@ -121,7 +180,7 @@ test('initial profile waits until the host writes complete model capabilities', 
     }
     let settled = false
     const installing = plugin.installInitialProfile(
-      api, remote, 'http://127.0.0.1:8317/v1', '', messages,
+      api, scope, 'http://127.0.0.1:8317/v1', '', messages,
     ).then((profile) => {
       settled = true
       return profile
@@ -157,12 +216,15 @@ test('initial profile waits until the host writes complete model capabilities', 
     currentNamespace = {
       ns: 'llm-pi-ai', revision: 3, value: { providers: { CLIProxyAPI: synchronized } },
     }
-    for (const listener of [...listeners]) listener('llm-pi-ai', 3)
+    scopeSnapshot = {
+      status: 'ready', revision: 3, value: currentNamespace.value, writable: true,
+    }
+    for (const listener of [...scopeListeners]) listener()
 
     const profile = await installing
     assert.deepEqual(profile.models[0].input, ['text', 'image'])
     assert.deepEqual(profile.models[0].reasoningEfforts, { low: 'low', high: 'high' })
-    assert.equal(listeners.length, 0)
+    assert.equal(scopeListeners.length, 0)
   } finally {
     delete globalThis.window
   }

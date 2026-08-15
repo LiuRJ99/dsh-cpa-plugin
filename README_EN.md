@@ -22,7 +22,7 @@ npx @deepseek-ai/dsh web
 
 After opening Harness:
 
-1. Go to **Settings → Models → CLIProxyAPI**.
+1. Go to **Settings → Plugins → CLIProxyAPI**.
 2. Enter the CLIProxyAPI **API URL**, for example
    `http://127.0.0.1:8317/v1`.
 3. Enter the **API key**. Leave it empty if the service does not require authentication.
