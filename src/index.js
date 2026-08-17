@@ -4,6 +4,10 @@ import { assertUsableApiKey, attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
 import { deepEqualJson, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { catalogURL, readCodexCatalog } from './catalog.js'
+// The account/quota/speed functionality is an add-on. The upstream provider
+// below remains responsible for discovery, profile synchronization, and the
+// actual CLIProxyAPI model route.
+import { apply as applyCpaAddon } from '../lib/index.js'
 
 const MAX_CATALOG_BYTES = 4 * 1024 * 1024
 const DISCOVERY_HANDOFF_TTL_MS = 60000
@@ -12,6 +16,9 @@ const DISCOVERY_NS = settingsNamespace('llm-cliproxyapi')
 const PI_NS = settingsNamespace('llm-pi-ai')
 const API_KEY_REF = credentialRef('DSH_CLIPROXY_API_KEY')
 const PROVIDER = 'CLIProxyAPI'
+const MODEL_REFRESH_EVENT = 'dsh-cpa/refresh-models'
+const REFRESH_SETTINGS_NS = 'dsh-cpa-plugin'
+const REFRESH_INTERVALS = new Set([0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000])
 
 export const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
 export const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'
@@ -242,9 +249,30 @@ function retryDelay(config, failures) {
   return Math.min(config.retryInitialMs * (2 ** Math.max(0, failures - 1)), config.retryMaxMs)
 }
 
+function refreshIntervalOf(ctx, config) {
+  const value = ctx.settings.get(REFRESH_SETTINGS_NS)?.refreshIntervalMs
+  return Number.isInteger(value) && REFRESH_INTERVALS.has(value) ? value : config.refreshIntervalMs
+}
+
 export function apply(ctx, config) {
   if (!config.defaultInput.length) throw new Error('defaultInput must contain at least one modality')
   if (config.retryMaxMs < config.retryInitialMs) throw new Error('retryMaxMs must be greater than or equal to retryInitialMs')
+
+  // The upstream provider is also exercised with a deliberately small fake
+  // Context in its Node tests. The additive account/quota layer only needs
+  // Cordis' extension seam, so keep the original host path usable without it.
+  const cpaAddon = typeof ctx.inject === 'function'
+    ? applyCpaAddon(ctx, {
+      endpoint: 'http://127.0.0.1:8317',
+      // The upstream model provider itself remains owned by the original
+      // CLIProxyAPI profile above; the add-on contributes account/quota data.
+      providerId: 'cpa',
+      managementKeyEnv: 'CPA_MANAGEMENT_KEY',
+      timeoutMs: config.fetchTimeoutMs,
+      refreshIntervalMs: config.refreshIntervalMs,
+      registerDiscovery: false,
+    })
+    : undefined
 
   const catalogFor = (profile, signal) => discoverCatalog(ctx, {
     baseURL: profile.baseURL,
@@ -323,6 +351,15 @@ export function apply(ctx, config) {
         value: next,
       }])
     }
+    if (!authOnly && cpaAddon !== undefined) {
+      try {
+        await cpaAddon.refreshAccounts(signal)
+      } catch (error) {
+        if (signal.aborted) throw signal.reason ?? error
+        const message = error instanceof Error ? error.message : String(error)
+        ctx.logger.warn('CLIProxyAPI account/quota refresh failed: ' + message)
+      }
+    }
     return true
   }
 
@@ -330,24 +367,16 @@ export function apply(ctx, config) {
   let running = false
   let rerun = false
   let authOnlyRequested = false
+  let throwOnErrorRequested = false
   let activeController
   let wakeDispose
+  let drainPromise
   let failures = 0
   let lastError = ''
 
   const cancelWake = () => {
     wakeDispose?.()
     wakeDispose = undefined
-  }
-
-  const wakeAfter = (delay) => {
-    cancelWake()
-    if (delay <= 0) return
-    wakeDispose = ctx.timeout(() => {
-      wakeDispose = undefined
-      rerun = true
-      void drain()
-    }, delay)
   }
 
   const drain = async () => {
@@ -358,6 +387,8 @@ export function apply(ctx, config) {
         rerun = false
         const authOnly = authOnlyRequested
         authOnlyRequested = false
+        const throwOnError = throwOnErrorRequested
+        throwOnErrorRequested = false
         const controller = new AbortController()
         activeController = controller
         try {
@@ -365,7 +396,7 @@ export function apply(ctx, config) {
           failures = 0
           lastError = ''
           if (authOnly) rerun = true
-          else if (hasProfile && !rerun) wakeAfter(config.refreshIntervalMs)
+          else if (hasProfile && !rerun) wakeAfter(refreshIntervalOf(ctx, config))
         } catch (error) {
           if (controller.signal.aborted || stopped) continue
           failures += 1
@@ -374,6 +405,7 @@ export function apply(ctx, config) {
             ctx.logger.warn('CLIProxyAPI provider refresh failed: ' + message)
             lastError = message
           }
+          if (throwOnError) throw error
           wakeAfter(retryDelay(config, failures))
           break
         } finally {
@@ -382,18 +414,40 @@ export function apply(ctx, config) {
       }
     } finally {
       running = false
-      if (rerun && !wakeDispose && !stopped) void drain()
+      if (rerun && !wakeDispose && !stopped) void startDrain()
     }
   }
 
-  const schedule = ({ authOnly = false } = {}) => {
-    if (stopped) return
+  const startDrain = () => {
+    if (running || stopped) return drainPromise ?? Promise.resolve()
+    drainPromise = drain()
+    return drainPromise
+  }
+
+  const wakeAfter = (delay) => {
+    cancelWake()
+    if (delay <= 0) return
+    wakeDispose = ctx.timeout(() => {
+      wakeDispose = undefined
+      rerun = true
+      void startDrain()
+    }, delay)
+  }
+
+  const schedule = ({ authOnly = false, throwOnError = false } = {}) => {
+    if (stopped) return Promise.resolve()
+    // A full refresh supersedes a pending auth-only pass. This keeps the
+    // unified manual refresh from being downgraded to a credential update.
     if (authOnly) authOnlyRequested = true
+    else authOnlyRequested = false
+    if (throwOnError) throwOnErrorRequested = true
     cancelWake()
     rerun = true
     activeController?.abort(new Error('CLIProxyAPI provider refresh superseded'))
-    if (!running) void drain()
+    return startDrain()
   }
+
+  ctx.on(MODEL_REFRESH_EVENT, () => schedule({ throwOnError: true }))
 
   const scheduleFromSettings = (force = false) => {
     const profile = ctx.settings.get(PI_NS)?.providers?.[PROVIDER]
@@ -405,6 +459,7 @@ export function apply(ctx, config) {
 
   ctx.on('settings/updated', (ns) => {
     if (ns === PI_NS) scheduleFromSettings()
+    else if (ns === REFRESH_SETTINGS_NS) schedule()
   })
   ctx.on('credentials/updated', (ref) => {
     if (ref === API_KEY_REF) schedule({ authOnly: true })

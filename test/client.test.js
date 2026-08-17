@@ -92,6 +92,10 @@ test('client bundle registers a lifecycle-owned Plugins Settings tab', async () 
 test('client owns only its Settings slot and keeps the configuration accessible', async () => {
   const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /setInterval\s*\(/)
+   assert.doesNotMatch(source, /refresh-quotas|refreshFrequency/)
+   assert.match(source, /REFRESH_INTERVALS/)
+   assert.match(source, /set-refresh-interval/)
+   assert.match(source, /cpaRpc\(connection, 'refresh'/)
   assert.doesNotMatch(source, /document\./)
   assert.doesNotMatch(source, /MutationObserver/)
   assert.doesNotMatch(source, /querySelector(All)?\s*\(/)
@@ -104,6 +108,40 @@ test('client owns only its Settings slot and keeps the configuration accessible'
   assert.doesNotMatch(source, /remote\.\$on\('settings\/document-updated'/)
   assert.match(source, /remote\.\$on\('credentials\/updated'/)
   assert.match(source, /role: 'status'/)
+})
+
+test('unified refresh keeps model and quota actions together', async () => {
+  const host = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
+  const provider = await readFile(new URL('../src/index.js', import.meta.url), 'utf8')
+  const facade = await readFile(new URL('../src/client/cpa-client.ts', import.meta.url), 'utf8')
+  assert.match(host, /case 'refresh':/)
+  assert.match(host, /case 'set-refresh-interval':/)
+  assert.match(provider, /MODEL_REFRESH_EVENT/)
+  assert.match(provider, /cpaAddon\.refreshAccounts/)
+  assert.doesNotMatch(facade, /setInterval\s*\(/)
+  assert.match(host, /refreshModelCatalog\(ctx, signal\)/)
+  assert.match(host, /refreshAccounts\(signal\)/)
+  assert.doesNotMatch(host, /case 'refresh-quotas':/)
+})
+
+test('composer input left slot exposes a model-scoped account quota switcher', async () => {
+  const source = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
+  const indicator = await readFile(new URL('../src/client/cpa-account-indicator.tsx', import.meta.url), 'utf8')
+  assert.match(source, /conversation\.input\.left/)
+  assert.match(source, /CpaAccountIndicator/)
+  assert.match(indicator, /role="status"/)
+  assert.match(indicator, /dsh-cpa-account-indicator-progress/)
+  assert.match(indicator, /onClick/)
+  assert.match(indicator, /loadAccountModels/)
+  assert.match(indicator, /selectAccount/)
+})
+
+test('model popup does not expose the non-binding account picker', async () => {
+  const source = await readFile(new URL('../src/client/cpa-model-select.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /menu\.account/)
+  assert.doesNotMatch(source, /pane === ['\"]account['\"]/)
+  assert.doesNotMatch(source, /loadSelectedAccount/)
+  assert.doesNotMatch(source, /chooseAccount/)
 })
 
 test('initial profile waits until the host writes complete model capabilities', async () => {

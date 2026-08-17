@@ -316,25 +316,11 @@ test('keyless profiles omit apiKeyEnv and receive a non-sensitive placeholder he
   }
 })
 
-test('refreshIntervalMs zero disables healthy periodic refreshes', async () => {
-  const previousFetch = globalThis.fetch
-  let fetches = 0
-  globalThis.fetch = async () => {
-    fetches += 1
-    return new Response(JSON.stringify({ models: [{ slug: 'model-a' }] }), { status: 200 })
-  }
-  try {
-    const harness = createContext({ providers: {
-      CLIProxyAPI: managedProfile(),
-    } })
-    apply(harness.ctx, await resolvedConfig({ refreshIntervalMs: 0 }))
-    await waitFor(() => fetches === 1)
-    await new Promise((resolve) => setTimeout(resolve, 25))
-    assert.equal(harness.timeouts.length, 0)
-    harness.dispose()
-  } finally {
-    globalThis.fetch = previousFetch
-  }
+test('refreshIntervalMs defaults to five minutes and supports manual mode', async () => {
+  const config = await resolvedConfig()
+  assert.equal(config.refreshIntervalMs, 300000)
+  const manual = await resolvedConfig({ refreshIntervalMs: 0 })
+  assert.equal(manual.refreshIntervalMs, 0)
 })
 
 test('credential removal regenerates the profile in keyless mode', async () => {

@@ -1,20 +1,23 @@
 {
   "name": "@LiuRJ99/dsh-cpa-plugin",
   "version": "0.0.1",
-  "description": "GUI-configurable CLIProxyAPI Responses provider for DeepSeek Harness",
+  "description": "GUI-configurable CLIProxyAPI Responses provider for DeepSeek Harness with account, quota and speed extensions.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./client": "./client.js",
+    "./client": "./lib/composed-client.js",
     "./catalog": "./src/catalog.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "files": ["src", "client.js", "cordis.patch.yml", "README.md", "README_EN.md"],
+  "files": ["src", "client.js", "cordis.patch.yml", "README.md", "README_EN.md", "lib", "scripts"],
   "scripts": {
+    "bundle": "tsdown --config-loader native -c tsdown.config.mjs && node scripts/compose-client.mjs",
+    "prepare": "npm run bundle",
     "test": "node --test",
-    "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --test",
+    "typecheck": "tsc --noEmit",
+    "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --check lib/index.js && node --test",
     "pack:github": "npm pack"
   },
   "dsh": {
@@ -24,7 +27,11 @@
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection",
+        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
         "@deepseek-ai/dsh-api-remotes"
       ],
       "platform": "web"
@@ -40,7 +47,11 @@
     "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
     "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.6",
     "react": "^18.2.0"
@@ -50,6 +61,30 @@
     "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
     "@deepseek-ai/schemastery": "3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "link:../../codex-work/deepseek-harness/vendor/cordis",
+    "@deepseek-ai/dsh-api-remotes": "link:../../codex-work/deepseek-harness/packages/api/remotes",
+    "@deepseek-ai/dsh-attachment": "link:../../codex-work/deepseek-harness/packages/attachment/attachment",
+    "@deepseek-ai/dsh-client-connection": "link:../../codex-work/deepseek-harness/packages/client/connection",
+    "@deepseek-ai/dsh-client-locale": "link:../../codex-work/deepseek-harness/packages/client/locale",
+    "@deepseek-ai/dsh-client-runtime": "link:../../codex-work/deepseek-harness/packages/client/runtime",
+    "@deepseek-ai/dsh-client-ui-conversation": "link:../../codex-work/deepseek-harness/packages/client/ui-conversation",
+    "@deepseek-ai/dsh-client-ui-model-selection": "link:../../codex-work/deepseek-harness/packages/client/ui-model-selection",
+    "@deepseek-ai/dsh-client-ui-primitives": "link:../../codex-work/deepseek-harness/packages/client/ui-primitives",
+    "@deepseek-ai/dsh-client-ui-settings": "link:../../codex-work/deepseek-harness/packages/client/ui-settings",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "link:../../codex-work/deepseek-harness/packages/client/ui-settings-plugins",
+    "@deepseek-ai/dsh-client-ui-slots": "link:../../codex-work/deepseek-harness/packages/client/ui-slots",
+    "@deepseek-ai/dsh-host-apiproxy": "link:../../codex-work/deepseek-harness/packages/host/apiproxy",
+    "@deepseek-ai/dsh-llm": "link:../../codex-work/deepseek-harness/packages/llm/llm",
+    "@deepseek-ai/dsh-llm-pi-ai": "link:../../codex-work/deepseek-harness/packages/llm/llm-pi-ai",
+    "@deepseek-ai/dsh-settings": "link:../../codex-work/deepseek-harness/packages/settings/settings",
+    "@deepseek-ai/schemastery": "link:../../codex-work/deepseek-harness/vendor/schemastery",
+    "@earendil-works/pi-ai": "^0.82.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^5.8.0"
   },
   "engines": { "node": ">=22" },
   "license": "MIT",
