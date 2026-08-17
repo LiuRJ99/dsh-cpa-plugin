@@ -14,7 +14,6 @@
   "files": ["src", "client.js", "cordis.patch.yml", "README.md", "README_EN.md", "lib", "scripts"],
   "scripts": {
     "bundle": "tsdown --config-loader native -c tsdown.config.mjs && node scripts/compose-client.mjs",
-    "prepare": "npm run bundle",
     "test": "node --test",
     "typecheck": "tsc --noEmit",
     "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --check lib/index.js && node --test",
