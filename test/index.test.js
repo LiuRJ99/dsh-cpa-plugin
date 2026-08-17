@@ -160,7 +160,7 @@ test('initial discovery requests the fixed rich catalog and returns full capabil
     })
     assert.equal(
       requestURL,
-      'http://127.0.0.1:8317/v1/models?client_version=dsh-cliproxyapi-provider',
+      'http://127.0.0.1:8317/v1/models?client_version=dsh-cpa-plugin',
     )
     assert.deepEqual(models[0], {
       id: 'gpt-5.6-sol',

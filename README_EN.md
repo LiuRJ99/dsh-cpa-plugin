@@ -11,7 +11,7 @@ The plugin automatically retrieves the model list from CLIProxyAPI, so models do
 Install the plugin:
 
 ```powershell
-npx @deepseek-ai/dsh plugin --profile web add github:router-for-me/dsh-cliproxyapi-provider
+npx @deepseek-ai/dsh plugin --profile web add github:LiuRJ99/dsh-cpa-plugin
 ```
 
 Start or restart DeepSeek Harness Web:
@@ -31,7 +31,7 @@ After opening Harness:
 Uninstall the plugin:
 
 ```powershell
-npx @deepseek-ai/dsh plugin --profile web remove @router-for-me/dsh-cliproxyapi-provider
+npx @deepseek-ai/dsh plugin --profile web remove @LiuRJ99/dsh-cpa-plugin
 ```
 
 Restart DeepSeek Harness Web after uninstalling the plugin.

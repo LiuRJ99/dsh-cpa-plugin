@@ -81,6 +81,6 @@ export function readCodexCatalog(body, options = {}) {
 export function catalogURL(baseURL) {
   const base = String(baseURL ?? '').trim().replace(/\/+$/, '')
   if (!base) throw new TypeError('CLIProxyAPI baseURL must not be empty')
-  const query = new URLSearchParams({ client_version: 'dsh-cliproxyapi-provider' })
+  const query = new URLSearchParams({ client_version: 'dsh-cpa-plugin' })
   return base + '/models?' + query
 }

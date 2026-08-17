@@ -96,7 +96,7 @@ test('filters hidden models by default and deduplicates slugs', () => {
 test('builds the Codex-compatible catalog URL', () => {
   assert.equal(
     catalogURL('http://127.0.0.1:8317/v1/'),
-    'http://127.0.0.1:8317/v1/models?client_version=dsh-cliproxyapi-provider',
+    'http://127.0.0.1:8317/v1/models?client_version=dsh-cpa-plugin',
   )
 })
 

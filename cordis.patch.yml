@@ -2,4 +2,4 @@
 # The built-in llm-pi-ai plugin remains the sole owner of provider routes.
 - insert:
     - id: llm-cliproxyapi
-      name: '@router-for-me/dsh-cliproxyapi-provider'
+      name: '@LiuRJ99/dsh-cpa-plugin'

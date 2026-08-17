@@ -1,5 +1,5 @@
 {
-  "name": "@router-for-me/dsh-cliproxyapi-provider",
+  "name": "@LiuRJ99/dsh-cpa-plugin",
   "version": "0.0.1",
   "description": "GUI-configurable CLIProxyAPI Responses provider for DeepSeek Harness",
   "type": "module",
@@ -32,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/router-for-me/dsh-cliproxyapi-provider.git"
+    "url": "git+https://github.com/LiuRJ99/dsh-cpa-plugin.git"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
