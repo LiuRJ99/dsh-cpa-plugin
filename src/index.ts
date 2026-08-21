@@ -451,14 +451,16 @@ async function requestModelCatalog(
   }
 }
 
-function parseModelCapabilities(value: unknown): CpaModelCapability[] {
+export function parseModelCapabilities(value: unknown): CpaModelCapability[] {
   const root = valueObject(value)
   const entries = Array.isArray(root?.models)
     ? root.models
     : Array.isArray(root?.data) ? root.data : []
   return entries.flatMap(entryValue => {
     const entry = valueObject(entryValue)
-    const id = stringValue(entry?.id) ?? stringValue(entry?.model)
+    // CLIProxyAPI's extended catalog identifies models with `slug`; the
+    // OpenAI-compatible fallback uses `id` or `model`.
+    const id = stringValue(entry?.slug) ?? stringValue(entry?.id) ?? stringValue(entry?.model)
     if (id === undefined) return []
     const tiers = Array.isArray(entry?.service_tiers)
       ? entry.service_tiers
