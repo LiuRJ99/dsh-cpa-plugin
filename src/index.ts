@@ -370,28 +370,16 @@ async function fetchModelCapabilities(
   const route = cpaFastRoute(ctx, config)
   if (route === undefined) return { models: [], fetchedAt: new Date().toISOString() }
   const key = route.apiKeyEnv === undefined ? undefined : await readCredential(route.apiKeyEnv)
-  if (key === undefined || key.trim() === '') {
-    return configuredModelCapabilities(ctx, config)
-  }
+  if (key === undefined || key.trim() === '') return { models: [], fetchedAt: new Date().toISOString() }
   const endpoint = new URL('models?client_version=0.144.0', ensureBaseUrl(route.baseURL)).toString()
   let body: unknown
   try {
     body = await requestModelCatalog(endpoint, key, config.timeoutMs, signal)
   } catch {
-    // Older CPA builds expose a usable model list but not an extended
-    // capability response. Keep the speed picker useful from the configured
-    // route while remaining conservative about which models get it.
-    return configuredModelCapabilities(ctx, config)
-  }
-  const parsed = parseModelCapabilities(body)
-  const byId = new Map(parsed.map(model => [model.id, model]))
-  for (const model of configuredModelCapabilities(ctx, config).models) {
-    const current = byId.get(model.id)
-    if (current === undefined) byId.set(model.id, model)
-    else if (current.serviceTiers.length === 0 && model.serviceTiers.length > 0) byId.set(model.id, model)
+    return { models: [], fetchedAt: new Date().toISOString() }
   }
   return {
-    models: [...byId.values()],
+    models: parseModelCapabilities(body),
     fetchedAt: new Date().toISOString(),
   }
 }
@@ -422,16 +410,6 @@ async function fetchModelInputCapabilities(
   }))
   return {
     models: groups.flat(1).filter((entry): entry is CpaModelInputCapability => entry !== undefined),
-    fetchedAt: new Date().toISOString(),
-  }
-}
-
-function configuredModelCapabilities(ctx: Context, config: Config): CpaModelCapabilitiesView {
-  const route = cpaFastRoute(ctx, config)
-  return {
-    models: route?.models.flatMap(model => isGpt56Model(model.id)
-      ? [{ id: model.id, serviceTiers: [{ id: 'priority', name: 'Fast' }] }]
-      : []) ?? [],
     fetchedAt: new Date().toISOString(),
   }
 }
@@ -497,13 +475,7 @@ function parseModelCapabilities(value: unknown): CpaModelCapability[] {
     })
     return [{
       id,
-      // Some CPA builds omit service_tiers from /v1/models. The current
-      // gpt-5.6 catalog is nevertheless known to support priority service
-      // tier; keep the speed control limited to that family until CPA
-      // exposes richer capability metadata.
-      serviceTiers: parsedTiers.length > 0
-        ? parsedTiers
-        : isGpt56Model(id) ? [{ id: 'priority', name: 'Fast' }] : [],
+      serviceTiers: parsedTiers,
     }]
   })
 }
@@ -1003,10 +975,6 @@ function parseAccountModelsRequest(value: unknown): CpaAccountModelsRequest {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-}
-
-function isGpt56Model(id: string): boolean {
-  return /^gpt-5\.6(?:-|$)/i.test(id.trim())
 }
 
 function modelEndpoint(value: string): string {

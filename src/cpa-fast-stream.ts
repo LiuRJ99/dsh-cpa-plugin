@@ -44,7 +44,7 @@ export async function* streamCpaFast(
   }
 
   const configured = route.models.find(model => model.id === options.model)
-  const efforts = reasoningEfforts(configured, options.model)
+  const efforts = reasoningEfforts(configured)
   const requestedEffort = options.reasoningEffort === undefined ? undefined : String(options.reasoningEffort)
   if (requestedEffort !== undefined && requestedEffort !== 'off' && !efforts.includes(requestedEffort)) {
     throw new LlmError(
@@ -106,8 +106,6 @@ function cpaModel(
   }
 }
 
-function reasoningEfforts(configured: CpaFastModel | undefined, model: string): string[] {
-  if (configured?.reasoningEfforts !== undefined) return [...configured.reasoningEfforts]
-  if (/^gpt-5\.6(?:-|$)/i.test(model)) return ['low', 'medium', 'high', 'max']
-  return []
+function reasoningEfforts(configured: CpaFastModel | undefined): string[] {
+  return configured?.reasoningEfforts === undefined ? [] : [...configured.reasoningEfforts]
 }

@@ -76,7 +76,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
     : choices.find(choice => choice.selection.provider === state.current?.provider && choice.selection.model === state.current.model)
   const reasoning = currentChoice === undefined
     ? undefined
-    : reasoningForModel(currentChoice.model, currentChoice.selection.provider === cpaState.providerId ? cpaState.providerId : undefined)
+    : currentChoice.model.reasoning
   const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
   const effortLabel = reasoning === undefined
     ? undefined
@@ -155,7 +155,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
         ?.models.find((model: ModelCatalogModel) => model.id === selection.model)
       const nextSelection = targetModel === undefined
         ? selection
-        : selectionForModel(selection.provider, targetModel, state.current, cpaState.providerId, effectiveEffort)
+        : selectionForModel(selection.provider, targetModel, state.current, effectiveEffort)
       const previousSpeed = state.current?.provider === cpaState.providerId && state.current !== null
         ? cpa.speed(sessionId, state.current.model)
         : 'standard'
@@ -419,14 +419,13 @@ function selectionForModel(
   provider: string,
   model: ModelCatalogModel,
   current: ModelSelection | null,
-  cpaProviderId?: string,
   currentEffectiveEffort?: string,
 ): ModelSelection {
   const currentEffort = current?.provider === provider
     ? current.reasoningEffort ?? currentEffectiveEffort
     : undefined
   const preservesCurrent = currentEffort !== undefined
-    && supportsReasoningEffort(provider, model, currentEffort, cpaProviderId)
+    && supportsReasoningEffort(model, currentEffort)
   const reasoningEffort = preservesCurrent ? currentEffort : model.reasoning?.defaultEffort
   return {
     provider,
@@ -435,40 +434,9 @@ function selectionForModel(
   }
 }
 
-function reasoningForModel(
-  model: ModelCatalogModel,
-  cpaProviderId?: string,
-): ModelCatalogModel['reasoning'] {
-  const base = model.reasoning
-  if (cpaProviderId === undefined || !isKnownCpaReasoningModel(model.id)) return base
-  const known = knownCpaReasoningEfforts(model.id)
-  const efforts = base?.efforts === undefined ? [] : [...base.efforts]
-  for (const id of known) {
-    if (!efforts.some(effort => effort.id === id)) efforts.push({ id, name: id === 'max' ? 'Max' : id[0].toUpperCase() + id.slice(1) })
-  }
-  return { ...base, efforts }
-}
-
 function supportsReasoningEffort(
-  provider: string,
   model: ModelCatalogModel,
   effort: string,
-  cpaProviderId?: string,
 ): boolean {
-  if (model.reasoning?.efforts.some(level => level.id === effort)) return true
-  return provider === cpaProviderId && knownCpaReasoningEfforts(model.id).includes(effort)
-}
-
-function knownCpaReasoningEfforts(modelId: string): readonly string[] {
-  if (isGpt56Model(modelId)) return ['low', 'medium', 'high', 'max']
-  if (/^gemini-3\.(?:6|7)-flash-high$/i.test(modelId.trim())) return ['low', 'medium', 'high']
-  return []
-}
-
-function isKnownCpaReasoningModel(modelId: string): boolean {
-  return knownCpaReasoningEfforts(modelId).length > 0
-}
-
-function isGpt56Model(modelId: string): boolean {
-  return /^gpt-5\.6(?:-|$)/i.test(modelId.trim())
+  return model.reasoning?.efforts.some(level => level.id === effort) ?? false
 }

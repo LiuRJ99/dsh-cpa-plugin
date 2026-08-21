@@ -24,11 +24,6 @@ const DEFAULT_CPA_REASONING_EFFORTS: Readonly<Record<string, string | null>> = {
   high: 'high',
 }
 
-const GPT56_REASONING_EFFORTS: Readonly<Record<string, string | null>> = {
-  ...DEFAULT_CPA_REASONING_EFFORTS,
-  max: 'max',
-}
-
 export interface CpaModelDraft {
   id: string
   name: string
@@ -475,7 +470,7 @@ function modelsOf(value: unknown): CpaModelDraft[] {
     const raw = entry as Record<string, unknown>
     const id = stringValue(raw.id)
     if (id === undefined) return []
-    const reasoningEfforts = reasoningEffortsForModel(id, reasoningEffortsOf(raw.reasoningEfforts))
+    const reasoningEfforts = reasoningEffortsForModel(reasoningEffortsOf(raw.reasoningEfforts))
     return [{
       id,
       name: stringValue(raw.name) ?? '',
@@ -495,7 +490,7 @@ function mergeModels(current: readonly CpaModelDraft[], found: readonly Discover
         name: model.name ?? '',
         ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
         ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
-        reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.id)),
+        reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel()),
       })
     }
   }
@@ -511,7 +506,7 @@ function normalizeModels(models: readonly CpaModelDraft[]): { value: readonly No
     if (seen.has(id)) return { error: `Duplicate model id: ${id}` }
     seen.add(id)
     const name = model.name.trim()
-    const reasoningEfforts = reasoningEffortsForModel(id, model.reasoningEfforts)
+    const reasoningEfforts = reasoningEffortsForModel(model.reasoningEfforts)
     value.push({
       ...(name === '' ? { id } : { id, name }),
       ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
@@ -532,7 +527,7 @@ function cloneDraft(draft: ModelDraftState, models: readonly NormalizedCpaModel[
       name: model.name ?? '',
       ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
       ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
-      reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.id, model.reasoningEfforts)),
+      reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.reasoningEfforts)),
     })),
   }
 }
@@ -563,10 +558,9 @@ function modelProfilesWithDefaultReasoning(value: unknown, api: string): { model
     const cleaned = isCompletionsApi(api) ? raw : withoutCompletionCompat(raw)
     if (cleaned !== raw) changed = true
     const configured = reasoningEffortsOf(cleaned.reasoningEfforts)
-    const reasoningEfforts = reasoningEffortsForModel(id, configured)
+    const reasoningEfforts = reasoningEffortsForModel(configured)
     const hasReasoning = Object.prototype.hasOwnProperty.call(cleaned, 'reasoningEfforts')
-    const needsGpt56Max = isGpt56Model(id) && configured !== false && configured?.max !== 'max'
-    if (hasReasoning && !needsGpt56Max && configured !== undefined) return [cleaned]
+    if (hasReasoning && configured !== undefined) return [cleaned]
     changed = true
     return [{ ...cleaned, reasoningEfforts: cloneReasoningEfforts(reasoningEfforts) }]
   })
@@ -597,14 +591,9 @@ function cloneReasoningEfforts(value: CpaReasoningEfforts): CpaReasoningEfforts 
   return value === false ? false : { ...value }
 }
 
-function reasoningEffortsForModel(id: string, configured?: CpaReasoningEfforts): CpaReasoningEfforts {
+function reasoningEffortsForModel(configured?: CpaReasoningEfforts): CpaReasoningEfforts {
   if (configured === false) return false
-  const base = configured ?? (isGpt56Model(id) ? GPT56_REASONING_EFFORTS : DEFAULT_CPA_REASONING_EFFORTS)
-  return isGpt56Model(id) ? { ...base, max: 'max' } : base
-}
-
-function isGpt56Model(id: string): boolean {
-  return /^gpt-5\.6(?:-|$)/i.test(id.trim())
+  return configured ?? DEFAULT_CPA_REASONING_EFFORTS
 }
 
 function valueObject(value: unknown): Record<string, unknown> | undefined {
