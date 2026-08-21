@@ -14,3 +14,18 @@ test('parses CLIProxyAPI slugs and priority service tiers', () => {
     serviceTiers: [{ id: 'priority', name: 'Fast', description: '1.5x speed, increased usage' }],
   }])
 })
+
+test('keeps slug, id, and model aliases for speed matching', () => {
+  assert.deepEqual(parseModelCapabilities({ models: [
+    {
+      slug: 'luna-max',
+      id: 'gpt-5.6-luna-max',
+      model: 'gpt-5.6',
+      service_tiers: [{ id: 'priority' }],
+    },
+  ] }), [{
+    id: 'luna-max',
+    aliases: ['gpt-5.6-luna-max', 'gpt-5.6'],
+    serviceTiers: [{ id: 'priority' }],
+  }])
+})

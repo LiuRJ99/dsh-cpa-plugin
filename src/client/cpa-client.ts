@@ -396,7 +396,10 @@ export class CpaClient {
 }
 
 export function hasFastSpeedCapability(model: string, capabilities: readonly CpaModelCapability[]): boolean {
-  return capabilities.some(entry => entry.id === model && entry.serviceTiers.some(tier => tier.id === 'priority'))
+  return capabilities.some(entry => {
+    const ids = [entry.id, ...(entry.aliases ?? [])]
+    return ids.includes(model) && entry.serviceTiers.some(tier => tier.id === 'priority')
+  })
 }
 
 function speedKey(sessionId: string, model: string): string {

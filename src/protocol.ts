@@ -93,6 +93,8 @@ export interface CpaServiceTier {
 
 export interface CpaModelCapability {
   id: string
+  /** Alternate upstream identities for the same route (slug/id/model). */
+  aliases?: readonly string[]
   serviceTiers: readonly CpaServiceTier[]
 }
 

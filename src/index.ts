@@ -119,7 +119,9 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     capabilitiesCache = value
     fastModelIds.clear()
     for (const model of value.models) {
-      if (model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) fastModelIds.add(model.id)
+      if (!model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) continue
+      fastModelIds.add(model.id)
+      for (const alias of model.aliases ?? []) fastModelIds.add(alias)
     }
     return value
   }
@@ -154,7 +156,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     listModelCapabilities: async (signal) => {
       const value = await loadModelCapabilities(signal ?? new AbortController().signal)
       const provider = effectiveConfig(ctx, config).providerId
-      return value.models.map(model => ({ provider, model: model.id, serviceTiers: model.serviceTiers }))
+      return value.models.flatMap(model => [model.id, ...(model.aliases ?? [])].map(modelId => ({
+        provider,
+        model: modelId,
+        serviceTiers: model.serviceTiers,
+      })))
     },
   }
   ctx.provide(MODEL_CAPABILITY_SERVICE, capabilityProvider)
@@ -271,6 +277,12 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
           return ok(await fetchModelInputCapabilities(ctx, signal))
         case 'select-speed': {
           const selection = parseSpeedSelection(payload)
+          // The UI may render a cached capability snapshot before the Host has
+          // finished its first catalog request. Load capabilities on demand so
+          // a valid Fast click is not silently normalized to Standard.
+          if (selection.speed === 'fast' && fastModelIds.has(selection.model) === false) {
+            try { await loadModelCapabilities(signal) } catch { /* unavailable means Standard */ }
+          }
           const speed = selection.speed === 'fast' && fastModelIds.has(selection.model) ? 'fast' : 'standard'
           speedBySessionModel.set(speedKey(selection.sessionId, selection.model), speed)
           return ok({ selectedSpeed: speed })
@@ -533,8 +545,14 @@ export function parseModelCapabilities(value: unknown): CpaModelCapability[] {
     const entry = valueObject(entryValue)
     // CLIProxyAPI's extended catalog identifies models with `slug`; the
     // OpenAI-compatible fallback uses `id` or `model`.
-    const id = stringValue(entry?.slug) ?? stringValue(entry?.id) ?? stringValue(entry?.model)
+    const ids = [...new Set([
+      stringValue(entry?.slug),
+      stringValue(entry?.id),
+      stringValue(entry?.model),
+    ].filter((value): value is string => value !== undefined))]
+    const id = ids[0]
     if (id === undefined) return []
+    const aliases = ids.slice(1)
     const tiers = Array.isArray(entry?.service_tiers)
       ? entry.service_tiers
       : Array.isArray(entry?.serviceTiers) ? entry.serviceTiers : []
@@ -550,6 +568,7 @@ export function parseModelCapabilities(value: unknown): CpaModelCapability[] {
     })
     return [{
       id,
+      ...aliases.length > 0 ? { aliases } : {},
       serviceTiers: parsedTiers,
     }]
   })
