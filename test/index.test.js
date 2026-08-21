@@ -268,7 +268,7 @@ test('first profile synchronization restores capabilities stripped by the browse
       reasoningEfforts: {
         low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
       },
-      compat: {},
+      compat: { chatTemplateKwargs: {} },
     })
     assert.deepEqual(profile.models[1].input, ['text'])
     await waitFor(() => harness.timeouts.some((row) => row.delay === 300000))

@@ -56,6 +56,9 @@ dsh plugin --profile web update
 - 对支持 `priority` 服务等级的模型提供“标准 / 快速”模式。
 - 快速模式由 Harness Host 侧转发，普通模式不改变原有模型请求流程。
 - 具体可用性取决于 CLIProxyAPI 返回的模型能力信息。
+- 支持基于模型 slug/别名映射速度能力，并在会话中实时镜像 CPA 速度状态。
+- 模型目录刷新时自动清理与失效过期的速度能力，同时完整保留用户手动配置的模型容量与参数。
+- 深度适配 DeepSeek Harness RC.8+ 的 Replay Envelope 与错误分类机制。
 
 ## 当前测试范围
 
@@ -65,6 +68,10 @@ dsh plugin --profile web update
 - **Codex**：账号状态、额度显示和速度模式相关流程。
 
 其他 CLIProxyAPI 渠道尚未完成测试，不对其行为做保证。
+
+## 版本记录
+
+详见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 卸载
 

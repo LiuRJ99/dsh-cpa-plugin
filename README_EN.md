@@ -56,6 +56,9 @@ This project keeps only the following additions on top of the official CLIProxyA
 - Provides **Standard / Fast** modes for models that report the `priority` service tier.
 - Fast mode is forwarded by the Harness Host; standard mode keeps the normal model request path.
 - Availability depends on the model capability information returned by CLIProxyAPI.
+- Supports slug and alias-based speed capability mapping while mirroring CPA session speed state in real time.
+- Automatically invalidates stale speed capabilities during catalog refresh while preserving manually configured model capacities and parameters.
+- Fully compatible with DeepSeek Harness RC.8+ Replay Envelopes and error classification.
 
 ## Current test coverage
 
@@ -65,6 +68,10 @@ The following CLIProxyAPI channels have been tested in practice:
 - **Codex**: account status, quota display, and the speed-mode flow.
 
 Other CLIProxyAPI channels have not been tested yet and are not guaranteed to work.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Uninstall
 
