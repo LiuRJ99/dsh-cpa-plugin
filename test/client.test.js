@@ -129,6 +129,14 @@ test('unified refresh keeps model and quota actions together', async () => {
   assert.match(source, /String\(window\?\.unit \|\| ''\)\.trim\(\) === '%'\)/)
 })
 
+test('unified refresh invalidates stale model capability requests', async () => {
+  const source = await readFile(new URL('../src/client/cpa-client.ts', import.meta.url), 'utf8')
+  assert.match(source, /capabilitiesEpoch/)
+  assert.match(source, /finally[\s\S]*invalidateModelCapabilities\(\)/)
+  assert.match(source, /if \(epoch !== this\.capabilitiesEpoch\) return this\.loadModelCapabilities\(\)/)
+  assert.match(source, /if \(this\.capabilitiesPromise === pending\) this\.capabilitiesPromise = undefined/)
+})
+
 test('composer input left slot exposes a model-scoped account quota switcher', async () => {
   const source = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
   const indicator = await readFile(new URL('../src/client/cpa-account-indicator.tsx', import.meta.url), 'utf8')

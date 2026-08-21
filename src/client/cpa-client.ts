@@ -53,13 +53,14 @@ export class CpaClient {
 
   private configPromise: Promise<CpaConfigView> | undefined
   private capabilitiesPromise: Promise<CpaModelCapabilitiesView> | undefined
+  private capabilitiesEpoch = 0
   private inputCapabilitiesPromise: Promise<CpaModelInputCapabilitiesView> | undefined
   private readonly accountModels = new Map<string, Promise<readonly string[]>>()
   constructor(private readonly rpc: ClientConnectionRpc) {}
 
   async refreshConfig(): Promise<CpaConfigView> {
     this.configPromise = undefined
-    this.capabilitiesPromise = undefined
+    this.invalidateModelCapabilities()
     this.inputCapabilitiesPromise = undefined
     return this.loadConfig()
   }
@@ -105,6 +106,10 @@ export class CpaClient {
 
   /** Unified refresh: synchronize the model catalog and account quota snapshot. */
   async refresh(): Promise<readonly CpaAccount[]> {
+    // A refresh can complete the provider profile bootstrap that supplies the
+    // API key and rich service-tier catalog. Any capability request started
+    // before that point must not be reused afterward.
+    this.invalidateModelCapabilities()
     this.store.update((state) => { state.status = 'loading'; state.error = null })
     try {
       await this.loadConfig()
@@ -113,6 +118,8 @@ export class CpaClient {
     } catch (error) {
       this.store.update((state) => { state.status = 'error'; state.error = messageOf(error) })
       throw error
+    } finally {
+      this.invalidateModelCapabilities()
     }
   }
 
@@ -134,9 +141,11 @@ export class CpaClient {
   }
 
   async loadModelCapabilities(): Promise<readonly CpaModelCapability[]> {
-    this.capabilitiesPromise ??= this.call<CpaModelCapabilitiesView>('model-capabilities', {})
+    const epoch = this.capabilitiesEpoch
+    const pending = this.capabilitiesPromise ??= this.call<CpaModelCapabilitiesView>('model-capabilities', {})
     try {
-      const value = await this.capabilitiesPromise
+      const value = await pending
+      if (epoch !== this.capabilitiesEpoch) return this.loadModelCapabilities()
       this.store.update((state) => {
         state.modelCapabilities = value.models
         state.capabilitiesFetchedAt = value.fetchedAt
@@ -144,13 +153,19 @@ export class CpaClient {
       void this.restorePersistedSpeeds(value.models)
       return value.models
     } catch (error) {
-      this.capabilitiesPromise = undefined
+      if (this.capabilitiesPromise === pending) this.capabilitiesPromise = undefined
+      if (epoch !== this.capabilitiesEpoch) return this.loadModelCapabilities()
       this.store.update((state) => {
         state.modelCapabilities = []
         state.capabilitiesFetchedAt = undefined
       })
       throw error
     }
+  }
+
+  private invalidateModelCapabilities(): void {
+    this.capabilitiesEpoch += 1
+    this.capabilitiesPromise = undefined
   }
 
   async loadInputCapabilities(): Promise<readonly CpaModelInputCapabilitiesView['models'][number][]> {
