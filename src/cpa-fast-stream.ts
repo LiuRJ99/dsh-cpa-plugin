@@ -1,12 +1,12 @@
 /**
  * The optional Fast path for CLIProXyAPI's Codex Responses models.
  *
- * The generic Harness request contract does not yet declare a service-tier
- * field. The Host keeps this implementation behind the `llm/stream` waterfall
- * and only calls it after the model catalog has advertised the `priority`
- * service tier. This
- * keeps the normal provider route and all other providers byte-for-byte
- * unchanged.
+ * The Host keeps this implementation behind the `llm/stream` waterfall and
+ * only calls it after the model catalog has advertised the `priority` service
+ * tier. Older Harness runtimes may carry the task tier through the optional
+ * execution bridge instead of a typed request field; the downstream CPA call
+ * always receives the effective `priority` tier. The normal provider route and
+ * all other providers remain unchanged.
  */
 import { attributionHeaders, contentHasImage, LlmError } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'

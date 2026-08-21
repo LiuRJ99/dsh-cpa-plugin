@@ -15,6 +15,7 @@ import { streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
 import { discoverCpaModels } from './model-discovery.ts'
 import { MODEL_CAPABILITY_SERVICE, PRIORITY_SERVICE_TIER, type ModelCapabilityProvider } from './model-capabilities.ts'
+import { MODEL_EXECUTION_SERVICE, type ModelExecutionProvider } from './model-execution.ts'
 import type { CpaAccount, CpaAccountModelsRequest, CpaAccountModelsView, CpaAccountSelection, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaModelInputCapability, CpaQuota, CpaRpcValue, CpaSpeed, CpaSpeedSelection } from './protocol.ts'
 
 export const name = 'dsh-cpa-plugin'
@@ -158,6 +159,16 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   }
   ctx.provide(MODEL_CAPABILITY_SERVICE, capabilityProvider)
 
+  const executionProvider: ModelExecutionProvider = {
+    setSessionSpeed: (sessionId, provider, model, speed) => {
+      if (provider !== effectiveConfig(ctx, config).providerId) return
+      const key = speedKey(sessionId, model)
+      if (speed === 'fast' && fastModelIds.has(model)) speedBySessionModel.set(key, 'fast')
+      else speedBySessionModel.delete(key)
+    },
+  }
+  ctx.provide(MODEL_EXECUTION_SERVICE, executionProvider)
+
   // Model discovery belongs to the upstream provider. The account/quota
   // add-on can still be used by itself in older profiles, so discovery is
   // retained as an opt-in compatibility path only.
@@ -170,10 +181,10 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     })
   }
 
-  // The speed control is an external-plugin concern. It is represented as a
-  // session/model preference and intercepted at the LLM waterfall, so the
-  // Harness request shape remains unchanged and the normal route is untouched
-  // when the user leaves the model at Standard.
+  // The speed control is an external-plugin concern. The optional execution
+  // bridge seeds session state for older DSH runtimes; newer runtimes also carry
+  // the first-class serviceTier request field through the waterfall. The normal
+  // route remains untouched when the user leaves the model at Standard.
   const handleCpaStream = (options: CpaStreamOptions, next: () => CpaStream): CpaStream => {
     const currentConfig = effectiveConfig(ctx, config)
     if (options.provider !== currentConfig.providerId || options.sessionId === undefined || fastModelIds.has(options.model) === false) return next()
