@@ -32,6 +32,8 @@ const GPT56_REASONING_EFFORTS: Readonly<Record<string, string | null>> = {
 export interface CpaModelDraft {
   id: string
   name: string
+  contextWindow?: number
+  maxTokens?: number
   reasoningEfforts?: CpaReasoningEfforts
 }
 
@@ -82,6 +84,8 @@ interface ModelDraftState {
 interface NormalizedCpaModel {
   id: string
   name?: string
+  contextWindow?: number
+  maxTokens?: number
   reasoningEfforts: CpaReasoningEfforts
 }
 
@@ -361,6 +365,8 @@ export class CpaModelSettingsController {
       this.draft.models = models.value.map(model => ({
         id: model.id,
         name: model.name ?? '',
+        ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
+        ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
         reasoningEfforts: cloneReasoningEfforts(model.reasoningEfforts),
       }))
       this.baseline = cloneDraft(this.draft, models.value)
@@ -470,7 +476,13 @@ function modelsOf(value: unknown): CpaModelDraft[] {
     const id = stringValue(raw.id)
     if (id === undefined) return []
     const reasoningEfforts = reasoningEffortsForModel(id, reasoningEffortsOf(raw.reasoningEfforts))
-    return [{ id, name: stringValue(raw.name) ?? '', reasoningEfforts: cloneReasoningEfforts(reasoningEfforts) }]
+    return [{
+      id,
+      name: stringValue(raw.name) ?? '',
+      ...positiveInteger(raw.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(raw.contextWindow) },
+      ...positiveInteger(raw.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(raw.maxTokens) },
+      reasoningEfforts: cloneReasoningEfforts(reasoningEfforts),
+    }]
   })
 }
 
@@ -481,6 +493,8 @@ function mergeModels(current: readonly CpaModelDraft[], found: readonly Discover
       existing.set(model.id, {
         id: model.id,
         name: model.name ?? '',
+        ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+        ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
         reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.id)),
       })
     }
@@ -500,6 +514,8 @@ function normalizeModels(models: readonly CpaModelDraft[]): { value: readonly No
     const reasoningEfforts = reasoningEffortsForModel(id, model.reasoningEfforts)
     value.push({
       ...(name === '' ? { id } : { id, name }),
+      ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
+      ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
       reasoningEfforts: cloneReasoningEfforts(reasoningEfforts),
     })
   }
@@ -514,6 +530,8 @@ function cloneDraft(draft: ModelDraftState, models: readonly NormalizedCpaModel[
     models: models.map(model => ({
       id: model.id,
       name: model.name ?? '',
+      ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
+      ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
       reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.id, model.reasoningEfforts)),
     })),
   }
@@ -611,6 +629,10 @@ function isCompletionsApi(value: string): boolean {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
 }
 
 function messageOf(error: unknown): string {

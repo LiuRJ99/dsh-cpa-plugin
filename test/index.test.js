@@ -249,6 +249,53 @@ test('first profile synchronization restores capabilities stripped by the browse
   }
 })
 
+test('profile synchronization preserves manual model capacities and route defaults', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ models: [
+    {
+      slug: 'manual-model',
+      display_name: 'Discovered Manual Model',
+      max_context_window: 372000,
+      max_output_tokens: 32768,
+    },
+    {
+      slug: 'new-model',
+      display_name: 'New Model',
+      max_context_window: 128000,
+      max_output_tokens: 4096,
+    },
+  ] }), { status: 200 })
+  try {
+    const harness = createContext({ providers: {
+      CLIProxyAPI: managedProfile({
+        models: [{
+          id: 'manual-model',
+          name: 'Manual Model',
+          contextWindow: 921000,
+          maxTokens: 16384,
+          input: ['text'],
+        }],
+        defaultContextWindow: 999999,
+        defaultMaxTokens: 12345,
+        headers: { [PROFILE_SYNC_HEADER]: 'rich:test' },
+      }),
+    } })
+    apply(harness.ctx, await resolvedConfig())
+
+    await waitFor(() => harness.mutations.length === 1)
+    const profile = harness.mutations[0][0].value
+    assert.deepEqual(profile.models.map(({ id, contextWindow, maxTokens }) => ({ id, contextWindow, maxTokens })), [
+      { id: 'manual-model', contextWindow: 921000, maxTokens: 16384 },
+      { id: 'new-model', contextWindow: 128000, maxTokens: 4096 },
+    ])
+    assert.equal(profile.defaultContextWindow, 999999)
+    assert.equal(profile.defaultMaxTokens, 12345)
+    harness.dispose()
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('credential refresh cannot finalize a pending bootstrap profile early', async () => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async () => new Response(JSON.stringify({ models: [{

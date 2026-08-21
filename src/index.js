@@ -231,9 +231,12 @@ async function profileOf(profile, models, hasApiKey, config) {
     displayName: PROVIDER,
     api: 'openai-responses',
     baseURL: normalizedBaseURL(profile.baseURL),
-    models,
-    defaultContextWindow: config.defaultContextWindow,
-    defaultMaxTokens: config.defaultMaxTokens,
+    // Discovery supplies the initial capacities, while values already present
+    // in the profile are user-owned overrides. This keeps a later catalog
+    // refresh from undoing a manual context-window correction.
+    models: mergeModelCapacities(profile.models, models),
+    defaultContextWindow: profile.defaultContextWindow ?? config.defaultContextWindow,
+    defaultMaxTokens: profile.defaultMaxTokens ?? config.defaultMaxTokens,
     defaultInput: [...config.defaultInput],
     headers: profileHeadersOf(profile.headers, config.headers, hasApiKey),
     ...(hasApiKey ? { apiKeyEnv: API_KEY_REF } : {}),
@@ -243,6 +246,26 @@ async function profileOf(profile, models, hasApiKey, config) {
     throw new Error(`llm-pi-ai rejected the generated provider profile: ${validated.issues[0].message}`)
   }
   return validated.value.providers[PROVIDER]
+}
+
+function mergeModelCapacities(previous, discovered) {
+  const previousById = new Map(
+    Array.isArray(previous)
+      ? previous.flatMap((model) => {
+        const id = typeof model?.id === 'string' && model.id.trim() !== '' ? model.id.trim() : undefined
+        return id === undefined ? [] : [[id, model]]
+      })
+      : [],
+  )
+  return discovered.map((model) => {
+    const old = previousById.get(model.id)
+    if (!old || typeof old !== 'object') return model
+    return {
+      ...model,
+      ...old.contextWindow === undefined ? {} : { contextWindow: old.contextWindow },
+      ...old.maxTokens === undefined ? {} : { maxTokens: old.maxTokens },
+    }
+  })
 }
 
 function retryDelay(config, failures) {

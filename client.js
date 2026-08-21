@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
     const ADDITIVE_CLIENT_ID = '@LiuRJ99/dsh-cpa-plugin/legacy-client-addon'
     const QUOTA_CACHE_KEY = 'dsh-cliproxyapi:quota-cache:v1'
      const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000]
+    const EMPTY_CPA_STATE = { accounts: [], status: 'idle', quotaFetchedAt: undefined, refreshIntervalMs: 300000 }
         const inject = ['connection', 'remote', 'slots', 'locale', 'settingsScope']
 
     const copy = {
@@ -416,11 +417,14 @@ window.__ModuleLoader__.load({
     }
 
     function quotaPercent(window) {
-      const remaining = Number(window?.remaining)
+      const remaining = Number(window?.remaining ?? (window?.total !== undefined && window?.used !== undefined
+        ? Number(window.total) - Number(window.used)
+        : NaN))
       const total = Number(window?.total)
       if (!Number.isFinite(remaining)) return undefined
+      if (String(window?.unit || '').trim() === '%') return Math.max(0, Math.min(100, remaining))
       if (Number.isFinite(total) && total > 0) return Math.max(0, Math.min(100, remaining / total * 100))
-      return window?.unit === '%' ? Math.max(0, Math.min(100, remaining)) : undefined
+      return remaining >= 0 && remaining <= 100 ? remaining : undefined
     }
 
     function quotaWindows(account) {
@@ -734,11 +738,19 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function SettingsTab({ api, connection, remote, scope, t }) {
+    function SettingsTab({ api, connection, remote, scope, t, cpa }) {
       const snapshot = useSyncExternalStore(
         (listener) => scope.subscribe(listener),
         () => scope.getSnapshot(),
         () => scope.getSnapshot(),
+      )
+      // The composer owns the single browser-side CPA snapshot. Reuse it here
+      // so Settings and the input indicator cannot render different local
+      // quota states for the same Host response.
+      const cpaState = useSyncExternalStore(
+        (listener) => cpa?.store?.subscribe(listener) || (() => {}),
+        () => cpa?.store?.getSnapshot() || EMPTY_CPA_STATE,
+        () => cpa?.store?.getSnapshot() || EMPTY_CPA_STATE,
       )
       const profile = profileOf(snapshot)
       const [baseURL, setBaseURL] = useState(DEFAULT_BASE_URL)
@@ -756,6 +768,9 @@ window.__ModuleLoader__.load({
       const messages = useMemo(() => messagesOf(t), [t])
       const readOnly = snapshot.status === 'ready' && !snapshot.writable
       const canSave = snapshot.status === 'ready' && snapshot.writable && !saving
+      const visibleAccounts = cpa === undefined ? accounts : cpaState.accounts
+      const visibleAccountsLoading = cpa === undefined ? accountsLoading : cpaState.status === 'loading'
+      const visibleRefreshIntervalMs = cpa === undefined ? refreshIntervalMs : cpaState.refreshIntervalMs
 
       useEffect(() => {
         if (snapshot.status !== 'ready' || snapshot.revision === undefined) return
@@ -794,6 +809,7 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
          let active = true
+         if (cpa !== undefined) return () => { active = false }
          void cpaRpc(connection, 'config', {}).then(value => {
            if (active && Number.isFinite(Number(value?.refreshIntervalMs))) setRefreshIntervalMs(Number(value.refreshIntervalMs))
          }).catch(() => {})
@@ -806,6 +822,17 @@ window.__ModuleLoader__.load({
         previousAccounts = accounts,
          baseURLOverride = cacheBaseURL,
       ) => {
+        if (cpa !== undefined) {
+          try {
+            await cpa.refresh()
+          } catch (error) {
+            setFeedback({
+              text: error instanceof Error ? error.message : String(error),
+              error: true,
+            })
+          }
+          return
+        }
         setAccountsLoading(true)
         try {
           const value = await cpaRpc(connection, 'refresh', {})
@@ -825,18 +852,30 @@ window.__ModuleLoader__.load({
       }
 
       useEffect(() => {
+        if (cpa !== undefined) {
+          if (snapshot.status === 'ready' && managementCredentialStatus === 'configured') void cpa.refresh().catch(() => {})
+          return
+        }
         if (snapshot.status === 'ready' && managementCredentialStatus === 'configured') {
            const cached = readQuotaCache(cacheBaseURL)
            if (cached) {
             setAccounts(cached.accounts)
             setCacheFetchedAt(cached.fetchedAt)
             }
-          void refreshAll(cached?.accounts || [])
+           void refreshAll(cached?.accounts || [])
         }
-      }, [connection, managementCredentialStatus, snapshot.status, profile?.baseURL])
+      }, [cpa, connection, managementCredentialStatus, snapshot.status, profile?.baseURL])
 
       const changeRefreshInterval = async (value) => {
          if (!REFRESH_INTERVALS.includes(value)) return
+         if (cpa !== undefined) {
+           try {
+             await cpa.setRefreshInterval(value)
+           } catch (error) {
+             setFeedback({ text: error instanceof Error ? error.message : String(error), error: true })
+           }
+           return
+         }
          setRefreshIntervalMs(value)
          try {
            const response = await cpaRpc(connection, 'set-refresh-interval', { refreshIntervalMs: value })
@@ -866,7 +905,8 @@ window.__ModuleLoader__.load({
             unwrap(await api.credentials.set({ ref: MANAGEMENT_CREDENTIAL_REF, value: nextManagementKey }))
           }
           await installInitialProfile(api, scope, nextBaseURL, nextApiKey, messages)
-          writeQuotaCache(nextBaseURL, accounts, cacheFetchedAt)
+          if (cpa === undefined) writeQuotaCache(nextBaseURL, accounts, cacheFetchedAt)
+          else await cpa.refreshConfig()
           setApiKey('')
           setManagementKey('')
           setManagementCredentialStatus(nextManagementKey ? 'configured' : managementCredentialStatus)
@@ -983,10 +1023,10 @@ window.__ModuleLoader__.load({
             }),
           ),
           React.createElement(AccountRows, {
-            accounts,
-            loading: accountsLoading,
+            accounts: visibleAccounts,
+            loading: visibleAccountsLoading,
             onRefresh: () => { void refreshAll() },
-             refreshIntervalMs,
+             refreshIntervalMs: visibleRefreshIntervalMs,
              onRefreshIntervalChange: (value) => { void changeRefreshInterval(value) },
                 t,
           }),
@@ -1028,9 +1068,10 @@ window.__ModuleLoader__.load({
       // The upstream settings tab remains the package's primary surface. The
       // model-selection extension is loaded only when
       // the full Web client context exposes the extension seam.
+      let cpa
       if (typeof ctx.inject === 'function') {
         const additive = require(ADDITIVE_CLIENT_ID)
-        if (typeof additive?.applyAdditive === 'function') additive.applyAdditive(ctx)
+        if (typeof additive?.applyAdditive === 'function') cpa = additive.applyAdditive(ctx)
       }
       const api = ctx.get('connection').api
       const remote = ctx.get('remote')
@@ -1050,7 +1091,7 @@ window.__ModuleLoader__.load({
         order: 30,
         label: () => t('tab'),
         locale: SETTINGS_LOCALE_NS,
-        inject: () => ({ api, connection: ctx.get('connection'), remote, scope }),
+        inject: () => ({ api, connection: ctx.get('connection'), remote, scope, cpa }),
       }, SettingsTab))
     }
 

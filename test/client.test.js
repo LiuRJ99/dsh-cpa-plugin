@@ -114,6 +114,7 @@ test('unified refresh keeps model and quota actions together', async () => {
   const host = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
   const provider = await readFile(new URL('../src/index.js', import.meta.url), 'utf8')
   const facade = await readFile(new URL('../src/client/cpa-client.ts', import.meta.url), 'utf8')
+  const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
   assert.match(host, /case 'refresh':/)
   assert.match(host, /case 'set-refresh-interval':/)
   assert.match(provider, /MODEL_REFRESH_EVENT/)
@@ -121,7 +122,11 @@ test('unified refresh keeps model and quota actions together', async () => {
   assert.doesNotMatch(facade, /setInterval\s*\(/)
   assert.match(host, /refreshModelCatalog\(ctx, signal\)/)
   assert.match(host, /refreshAccounts\(signal\)/)
+  assert.match(host, /case 'refresh':\s*\{[\s\S]*return ok\(await refreshAccounts\(signal\)\)/)
   assert.doesNotMatch(host, /case 'refresh-quotas':/)
+  assert.match(source, /cpa = additive\.applyAdditive\(ctx\)/)
+  assert.match(source, /cpaState = useSyncExternalStore/)
+  assert.match(source, /String\(window\?\.unit \|\| ''\)\.trim\(\) === '%'\)/)
 })
 
 test('composer input left slot exposes a model-scoped account quota switcher', async () => {

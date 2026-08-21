@@ -185,8 +185,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
           return ok(await readAccounts(signal))
         case 'refresh': {
           await refreshModelCatalog(ctx, signal)
-          const current = await readAccounts(signal)
-          return ok(current.quotaFetchedAt === undefined ? await refreshAccounts(signal) : current)
+          // A user-triggered refresh must invalidate the Host-side snapshot.
+          // `readAccounts()` is intentionally cache-friendly for model-scoped
+          // consumers, but returning it here made Settings and the composer
+          // keep different quota snapshots after one of them was refreshed.
+          return ok(await refreshAccounts(signal))
         }
         case 'account-models': {
           const request = parseAccountModelsRequest(payload)
