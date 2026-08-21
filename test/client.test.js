@@ -166,7 +166,18 @@ test('initial profile waits until the host writes complete model capabilities', 
     })
     const scopeListeners = []
     let currentNamespace = {
-      ns: 'llm-pi-ai', revision: 1, value: { providers: {} },
+      ns: 'llm-pi-ai', revision: 1, value: {
+        providers: {
+          CLIProxyAPI: {
+            baseURL: 'http://127.0.0.1:8317/v1',
+            models: [{
+              id: 'gpt-5.6-sol',
+              contextWindow: 921000,
+              maxTokens: 16384,
+            }],
+          },
+        },
+      },
     }
     let scopeSnapshot = {
       status: 'ready', revision: 1, value: {
@@ -234,6 +245,8 @@ test('initial profile waits until the host writes complete model capabilities', 
     }
     assert.ok(bootstrap)
     assert.equal(discoveryRequest.settingsNs, 'llm-cliproxyapi')
+    assert.equal(bootstrap.models[0].contextWindow, 921000)
+    assert.equal(bootstrap.models[0].maxTokens, 16384)
     assert.equal(bootstrap.models[0].input, undefined)
     assert.equal(bootstrap.models[0].reasoningEfforts, undefined)
     assert.match(bootstrap.headers['x-dsh-provider-cpa-sync'], /^rich:/)

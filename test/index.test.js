@@ -176,6 +176,39 @@ test('initial discovery requests the fixed rich catalog and returns full capabil
   }
 })
 
+test('model discovery preserves manual capacities already stored for the provider', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ models: [{
+    slug: 'gpt-5.6-sol',
+    display_name: 'GPT 5.6 Sol',
+    max_context_window: 372000,
+    max_output_tokens: 32768,
+  }] }), { status: 200 })
+  try {
+    const harness = createContext({ providers: {
+      CLIProxyAPI: managedProfile({
+        models: [{
+          id: 'gpt-5.6-sol',
+          name: 'GPT 5.6 Sol',
+          contextWindow: 921000,
+          maxTokens: 16384,
+        }],
+      }),
+    } })
+    apply(harness.ctx, await resolvedConfig())
+    const models = await harness.discoveries.get('llm-cliproxyapi')({
+      provider: 'CLIProxyAPI',
+      baseURL: 'http://127.0.0.1:8317/v1',
+      signal: new AbortController().signal,
+    })
+    assert.equal(models[0].contextWindow, 921000)
+    assert.equal(models[0].maxTokens, 16384)
+    harness.dispose()
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('first profile synchronization restores capabilities stripped by the browser RPC', async () => {
   const previousFetch = globalThis.fetch
   let fetches = 0

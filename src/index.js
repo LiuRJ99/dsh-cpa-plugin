@@ -339,8 +339,18 @@ export function apply(ctx, config) {
       headers: config.headers,
       fetchTimeoutMs: config.fetchTimeoutMs,
     }, request.apiKey, request.signal)
-    rememberDiscovery(request.baseURL, catalog.models)
-    return catalog.models
+    // The native Models settings page replaces the model list with the result
+    // of this discovery call. Preserve capacities already stored for the same
+    // provider endpoint so clicking "fetch available models" cannot erase a
+    // user's manual context-window or max-output correction.
+    const currentProfile = ctx.settings.get(PI_NS)?.providers?.[PROVIDER]
+    const previousModels = typeof currentProfile?.baseURL === 'string'
+      && normalizedBaseURL(currentProfile.baseURL) === normalizedBaseURL(request.baseURL)
+      ? currentProfile.models
+      : undefined
+    const models = mergeModelCapacities(previousModels, catalog.models)
+    rememberDiscovery(request.baseURL, models)
+    return models
   })
 
   let observedRefreshKey
