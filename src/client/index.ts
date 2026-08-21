@@ -17,6 +17,7 @@ import { CpaModelSettingsController } from './cpa-model-settings.tsx'
 import { CpaSettingsCard, CpaSettingsCardController } from './cpa-settings-card.tsx'
 import { en, zh } from './locales.ts'
 import { installStyles } from './styles.ts'
+import { MODEL_CAPABILITY_SERVICE, type ModelCapabilityProvider } from '../model-capabilities.ts'
 
 const NS = 'dsh-cpa'
 
@@ -41,6 +42,10 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
 
   const connection = ctx.get('connection') as unknown as ConnectionHandle
   const cpa = new CpaClient(connection.rpc)
+  const capabilityProvider: ModelCapabilityProvider = {
+    listModelCapabilities: () => cpa.listModelCapabilities(),
+  }
+  ctx.provide(MODEL_CAPABILITY_SERVICE, capabilityProvider)
   // Load the add-on state in the composed upstream bundle as well. The
   // legacy standalone entry did this already, but the incremental entry is
   // now the one used by the original client.js composition.

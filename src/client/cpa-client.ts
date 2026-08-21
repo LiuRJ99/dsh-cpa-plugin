@@ -1,6 +1,7 @@
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client'
 import type { CpaAccount, CpaAccountModelsView, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaRefreshIntervalView, CpaSpeed } from './protocol.ts'
+import type { ModelCapability } from '../model-capabilities.ts'
 
 const QUOTA_CACHE_KEY = 'dsh-cliproxyapi:quota-cache:v1'
 const ACCOUNT_PREFERENCES_KEY = 'dsh-cliproxyapi:account-preferences:v1'
@@ -161,6 +162,30 @@ export class CpaClient {
       })
       throw error
     }
+  }
+
+  /** Generic capability-provider view consumed by other optional plugins. */
+  async listModelCapabilities(): Promise<readonly ModelCapability[]> {
+    const provider = this.store.getSnapshot().providerId
+    const models = await this.loadModelCapabilities()
+    return models.map(model => ({ provider, model: model.id, serviceTiers: model.serviceTiers }))
+  }
+
+  hasSpeedPreference(sessionId: string, model: string): boolean {
+    return Object.prototype.hasOwnProperty.call(this.store.getSnapshot().speedBySessionModel, speedKey(sessionId, model))
+  }
+
+  /** Pull a host-observed speed (for taskboard-created sessions) without overwriting absent preferences. */
+  async syncSpeed(sessionId: string, model: string): Promise<CpaSpeed | undefined> {
+    const value = await this.call<{ sessionId: string; model: string; speed?: CpaSpeed }>('session-speed', { sessionId, model })
+    if (value.speed === undefined) return undefined
+    const preferences = {
+      ...this.store.getSnapshot().speedBySessionModel,
+      [speedKey(sessionId, model)]: value.speed,
+    }
+    this.store.update((state) => { state.speedBySessionModel = preferences })
+    persistSpeedPreferences(preferences)
+    return value.speed
   }
 
   private invalidateModelCapabilities(): void {

@@ -116,6 +116,15 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
     void cpa.loadInputCapabilities().catch(() => { /* modality metadata is optional */ })
   }, [available, cpa, load, sessionId])
 
+  // Taskboard-created sessions can select a tier before the Composer exists.
+  // Pull the host-observed session speed when available; an absent host value
+  // leaves local/manual preferences untouched.
+  useEffect(() => {
+    const current = state.current
+    if (!available || !isCpa || current === null) return
+    void cpa.syncSpeed(sessionId, current.model).catch(() => { /* optional bridge */ })
+  }, [available, cpa, isCpa, sessionId, state.current?.model])
+
   useEffect(() => {
     if (!open) return
     const closeOutside = (event: MouseEvent): void => {

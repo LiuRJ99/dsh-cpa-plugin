@@ -123,6 +123,12 @@ export interface CpaSpeedSelection {
   speed: CpaSpeed
 }
 
+export interface CpaSessionSpeedView {
+  sessionId: string
+  model: string
+  speed?: CpaSpeed
+}
+
 export interface CpaAccountSelection {
   sessionId: string
   authIndex?: string
@@ -149,4 +155,5 @@ export type CpaRpcValue =
   | CpaModelInputCapabilitiesView
   | { selected: string | undefined }
   | { selectedSpeed: CpaSpeed }
+  | CpaSessionSpeedView
   | { reset: boolean }

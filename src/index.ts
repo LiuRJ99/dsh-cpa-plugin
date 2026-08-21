@@ -14,6 +14,7 @@ import type { RpcResult } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
 import { discoverCpaModels } from './model-discovery.ts'
+import { MODEL_CAPABILITY_SERVICE, PRIORITY_SERVICE_TIER, type ModelCapabilityProvider } from './model-capabilities.ts'
 import type { CpaAccount, CpaAccountModelsRequest, CpaAccountModelsView, CpaAccountSelection, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaModelInputCapability, CpaQuota, CpaRpcValue, CpaSpeed, CpaSpeedSelection } from './protocol.ts'
 
 export const name = 'dsh-cpa-plugin'
@@ -80,6 +81,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   let defaultSelectedAccount: string | undefined
   const speedBySessionModel = new Map<string, CpaSpeed>()
   const fastModelIds = new Set<string>()
+  let capabilitiesCacheKey = ''
+  let capabilitiesCache: CpaModelCapabilitiesView | undefined
+  let capabilitiesPromise: Promise<CpaModelCapabilitiesView> | undefined
+  let capabilitiesPromiseKey = ''
+  let capabilitiesEpoch = 0
   const refreshEntry: RefreshSettings = { refreshIntervalMs: normalizeRefreshInterval(config.refreshIntervalMs) }
 
   installSettingsSection(ctx, REFRESH_SETTINGS_NS, RefreshSettings, refreshEntry, {
@@ -89,6 +95,7 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
 
   type CpaStreamOptions = Parameters<typeof streamCpaFast>[0]
   type CpaStream = ReturnType<typeof streamCpaFast>
+  type CpaRequestExtension = { serviceTier?: unknown }
 
   // Credentials are optional at composition time. The environment fallback
   // keeps the plugin usable in a minimal profile; the normal web profile has
@@ -104,6 +111,52 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
       }
     }
   })
+
+  const capabilityCacheKeyOf = (currentConfig: Config): string => `${currentConfig.endpoint}\u0000${currentConfig.providerId}`
+  const applyCapabilities = (value: CpaModelCapabilitiesView, key: string): CpaModelCapabilitiesView => {
+    capabilitiesCacheKey = key
+    capabilitiesCache = value
+    fastModelIds.clear()
+    for (const model of value.models) {
+      if (model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) fastModelIds.add(model.id)
+    }
+    return value
+  }
+  const invalidateModelCapabilities = (): void => {
+    capabilitiesEpoch += 1
+    capabilitiesCacheKey = ''
+    capabilitiesCache = undefined
+    capabilitiesPromise = undefined
+    capabilitiesPromiseKey = ''
+    fastModelIds.clear()
+  }
+  const loadModelCapabilities = (signal: AbortSignal): Promise<CpaModelCapabilitiesView> => {
+    const epoch = capabilitiesEpoch
+    const currentConfig = effectiveConfig(ctx, config)
+    const key = capabilityCacheKeyOf(currentConfig)
+    if (capabilitiesCache !== undefined && capabilitiesCacheKey === key) return Promise.resolve(capabilitiesCache)
+    if (capabilitiesPromise !== undefined && capabilitiesPromiseKey === key) return capabilitiesPromise
+    if (capabilitiesPromise !== undefined && capabilitiesPromiseKey !== key) invalidateModelCapabilities()
+    const pending = fetchModelCapabilities(ctx, currentConfig, readCredential, signal).then(value => {
+      if (epoch !== capabilitiesEpoch) return loadModelCapabilities(signal)
+      return applyCapabilities(value, key)
+    })
+    capabilitiesPromise = pending
+    capabilitiesPromiseKey = key
+    void pending.then(
+      () => { if (capabilitiesPromise === pending) { capabilitiesPromise = undefined; capabilitiesPromiseKey = '' } },
+      () => { if (capabilitiesPromise === pending) { capabilitiesPromise = undefined; capabilitiesPromiseKey = '' } },
+    )
+    return pending
+  }
+  const capabilityProvider: ModelCapabilityProvider = {
+    listModelCapabilities: async (signal) => {
+      const value = await loadModelCapabilities(signal ?? new AbortController().signal)
+      const provider = effectiveConfig(ctx, config).providerId
+      return value.models.map(model => ({ provider, model: model.id, serviceTiers: model.serviceTiers }))
+    },
+  }
+  ctx.provide(MODEL_CAPABILITY_SERVICE, capabilityProvider)
 
   // Model discovery belongs to the upstream provider. The account/quota
   // add-on can still be used by itself in older profiles, so discovery is
@@ -124,7 +177,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   const handleCpaStream = (options: CpaStreamOptions, next: () => CpaStream): CpaStream => {
     const currentConfig = effectiveConfig(ctx, config)
     if (options.provider !== currentConfig.providerId || options.sessionId === undefined || fastModelIds.has(options.model) === false) return next()
-    if (speedBySessionModel.get(speedKey(String(options.sessionId), options.model)) !== 'fast') return next()
+    const extension = options as CpaStreamOptions & CpaRequestExtension
+    const key = speedKey(String(options.sessionId), options.model)
+    const requestedTier = extension.serviceTier === PRIORITY_SERVICE_TIER
+    if (requestedTier) speedBySessionModel.set(key, 'fast')
+    if (!requestedTier && speedBySessionModel.get(key) !== 'fast') return next()
     const route = cpaFastRoute(ctx, currentConfig)
     if (route === undefined) return next()
     return streamCpaFast(options, route, readCredential, () => ctx.get('attachments'))
@@ -176,7 +233,8 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
             path: ['refreshIntervalMs'],
             value: intervalMs,
           }])
-          await refreshModelCatalog(ctx, signal)
+          invalidateModelCapabilities()
+           await refreshModelCatalog(ctx, signal)
           const current = await readAccounts(signal)
           const accounts = current.quotaFetchedAt === undefined ? await refreshAccounts(signal) : current
           return ok({ ...accounts, refreshIntervalMs: effectiveRefreshInterval(ctx, config) })
@@ -184,7 +242,8 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
         case 'accounts':
           return ok(await readAccounts(signal))
         case 'refresh': {
-          await refreshModelCatalog(ctx, signal)
+          invalidateModelCapabilities()
+           await refreshModelCatalog(ctx, signal)
           // A user-triggered refresh must invalidate the Host-side snapshot.
           // `readAccounts()` is intentionally cache-friendly for model-scoped
           // consumers, but returning it here made Settings and the composer
@@ -195,15 +254,8 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
           const request = parseAccountModelsRequest(payload)
           return ok(await fetchAccountModels(effectiveConfig(ctx, config), readCredential, request, signal))
         }
-        case 'model-capabilities': {
-          fastModelIds.clear()
-          const currentConfig = effectiveConfig(ctx, config)
-          const value = await fetchModelCapabilities(ctx, currentConfig, readCredential, signal)
-          for (const model of value.models) {
-            if (model.serviceTiers.some(tier => tier.id === 'priority')) fastModelIds.add(model.id)
-          }
-          return ok(value)
-        }
+        case 'model-capabilities':
+          return ok(await loadModelCapabilities(signal))
         case 'model-input-capabilities':
           return ok(await fetchModelInputCapabilities(ctx, signal))
         case 'select-speed': {
@@ -211,6 +263,16 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
           const speed = selection.speed === 'fast' && fastModelIds.has(selection.model) ? 'fast' : 'standard'
           speedBySessionModel.set(speedKey(selection.sessionId, selection.model), speed)
           return ok({ selectedSpeed: speed })
+        }
+        case 'session-speed': {
+          const selection = parseSessionSpeed(payload)
+          const key = speedKey(selection.sessionId, selection.model)
+          const speed = speedBySessionModel.get(key)
+          return ok({
+            sessionId: selection.sessionId,
+            model: selection.model,
+            ...(speed === undefined ? {} : { speed }),
+          })
         }
         case 'select-account': {
           const selection = parseSelection(payload)
@@ -957,6 +1019,15 @@ function parseSpeedSelection(value: unknown): CpaSpeedSelection {
     throw new Error('invalid CLIProXyAPI speed selection')
   }
   return { sessionId, model, speed }
+}
+
+function parseSessionSpeed(value: unknown): { sessionId: string; model: string } {
+  if (typeof value !== 'object' || value === null) throw new Error('invalid CLIProXyAPI session speed request')
+  const raw = value as Record<string, unknown>
+  const sessionId = stringValue(raw.sessionId)
+  const model = stringValue(raw.model)
+  if (sessionId === undefined || model === undefined) throw new Error('CLIProXyAPI session speed requires sessionId and model')
+  return { sessionId, model }
 }
 
 function parseAuthIndex(value: unknown): string {

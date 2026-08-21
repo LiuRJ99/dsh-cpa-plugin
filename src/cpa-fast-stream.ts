@@ -1,9 +1,10 @@
 /**
  * The optional Fast path for CLIProXyAPI's Codex Responses models.
  *
- * Harness GenerateOptions intentionally has no speed field. The Host keeps
- * this implementation behind the `llm/stream` waterfall and only calls it
- * after the model catalog has advertised the `priority` service tier. This
+ * The generic Harness request contract does not yet declare a service-tier
+ * field. The Host keeps this implementation behind the `llm/stream` waterfall
+ * and only calls it after the model catalog has advertised the `priority`
+ * service tier. This
  * keeps the normal provider route and all other providers byte-for-byte
  * unchanged.
  */
