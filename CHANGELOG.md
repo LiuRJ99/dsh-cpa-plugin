@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-08-23
+
+### Features
+
+- **Image Generation Stream (图像生成流)**:
+  - Added a dedicated CPA image-generation stream (`cpa-image-stream.js`) that owns `gpt-image-*` models (e.g. `gpt-image-2`, `gpt-image-1.5`) outside the text chat waterfall, with per-model `imageGeneration` capability flagging in the catalog.
+  - Re-admitted hidden image-generation models from the upstream catalog (`visibility: 'hide'`) so the image stream path can serve them, while every other hidden model stays excluded by default (`includeHiddenImageModels` opt-in available).
+
+### Fixes & Improvements
+
+- **Self-contained pi-ai adapter boundary (pi-ai 适配层本地化)**:
+  - Vendored the small `toPiContext` / `toStreamChunks` / replay compatibility slice into `src/pi-ai/` so the fast path no longer depends on unpublished TypeScript sources of the `@deepseek-ai/dsh-llm-pi-ai` package.
+- **RC.8 dependency stand-alone install (依赖独立化)**:
+  - Replaced local `link:` devDependencies with published `0.1.0-rc.8` versions so the plugin installs cleanly from GitHub without workspace links.
+
+---
+
 ## [0.1.0] - 2026-08-21
 
 ### Features

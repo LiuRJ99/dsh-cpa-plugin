@@ -113,14 +113,15 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-cpa: model settings refresh')
 
   // Settings → Plugins → Plugin configuration. No new main-panel button or
-  // standalone quota route is introduced.
+  // standalone quota route is introduced. The card is keyed on the settings
+  // namespace the Host add-on serves (`dsh-cpa-plugin`), matching the
+  // configurable-plugins tab's keyed `settings.plugin.item` dispatch.
   ctx.inject(['slots', 'connection'], (scope) => {
     const clientConnection = scope.get('connection') as unknown as ConnectionHandle
     const card = new CpaSettingsCardController(clientConnection.api, cpa, model)
     scope.slots.inject('settings.plugin.item', () => scope.slots.register({
       name: 'settings.plugin.item',
-      id: 'cpa',
-      order: 30,
+      key: 'dsh-cpa-plugin',
       locale: NS,
       inject: () => card.inject(),
     }, CpaSettingsCard))

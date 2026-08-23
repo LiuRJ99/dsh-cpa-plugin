@@ -52,7 +52,12 @@ function inputModalitiesOf(entry, fallback) {
 
 export function modelProfileOf(entry, options = {}) {
   const id = nonEmptyString(entry?.slug, entry?.id, entry?.model)
-  if (!id || (!options.includeHiddenModels && entry?.visibility === 'hide')) return undefined
+  if (!id) return undefined
+  // The upstream provider hides image-generation models (e.g. gpt-image-2) from
+  // the text chat catalog. Re-admit them so the image stream path can own them,
+  // but keep every other hidden model out unless the caller opts in.
+  const hiddenImage = isHiddenImageModel(entry, options)
+  if (entry?.visibility === 'hide' && !options.includeHiddenModels && !hiddenImage) return undefined
   const reasoningEfforts = reasoningEffortsOf(entry)
   return {
     id,
@@ -61,6 +66,7 @@ export function modelProfileOf(entry, options = {}) {
     maxTokens: positiveInteger(entry?.max_output_tokens, entry?.max_completion_tokens, entry?.max_tokens, options.defaultMaxTokens),
     input: inputModalitiesOf(entry, options.defaultInput ?? ['text']),
     ...(reasoningEfforts ? { reasoningEfforts } : {}),
+    ...(hiddenImage || IMAGE_MODELS.has(id) || IMAGE_MODELS.has(id.replace(/-(mini|hd)$/u, '')) ? { imageGeneration: true } : {}),
   }
 }
 
@@ -76,6 +82,35 @@ export function readCodexCatalog(body, options = {}) {
   }
   if (!models.length) throw new TypeError('CLIProxyAPI model catalog contains no usable models')
   return models
+}
+
+// Image-generation model ids the plugin owns outside the text chat catalog.
+// CPA hides gpt-image-2 (and optionally gpt-image-1.5) behind visibility:hide;
+// both are admitted so the CPA image stream can serve them.
+const IMAGE_MODELS = new Set([
+  'gpt-image-1',
+  'gpt-image-1.5',
+  'gpt-image-2',
+  'gpt-image-2-mini',
+  'gpt-image-2-hd',
+  'gpt-image-3',
+])
+
+/**
+ * True when a raw catalog entry is a hidden image-generation model. CPA marks
+ * these `visibility: 'hide'` so the chat model directory stays text-only; the
+ * plugin re-admits them so the image-generation stream path can own them.
+ */
+export function isHiddenImageModel(entry, options = {}) {
+  const id = modelIdOf(entry)
+  if (id === undefined) return false
+  if (!IMAGE_MODELS.has(id) && !IMAGE_MODELS.has(id.replace(/-(mini|hd)$/u, ''))) return false
+  return entry?.visibility === 'hide' || options.includeHiddenImageModels === true
+}
+
+function modelIdOf(entry) {
+  const value = entry?.id ?? entry?.slug ?? entry?.model
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
 export function catalogURL(baseURL) {

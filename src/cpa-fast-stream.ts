@@ -12,8 +12,8 @@ import { attributionHeaders, contentHasImage, LlmError } from '@deepseek-ai/dsh-
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { stream as openAIResponsesStream } from '@earendil-works/pi-ai/api/openai-responses'
 import type { Model, OpenAIResponsesOptions, ThinkingLevelMap } from '@earendil-works/pi-ai'
-import { toPiContext } from '@deepseek-ai/dsh-llm-pi-ai/src/context.ts'
-import { toStreamChunks } from '@deepseek-ai/dsh-llm-pi-ai/src/stream.ts'
+import { toPiContext } from './pi-ai/context.ts'
+import { toStreamChunks } from './pi-ai/stream.ts'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
 type PiGenerateOptions = Parameters<typeof toPiContext>[0]

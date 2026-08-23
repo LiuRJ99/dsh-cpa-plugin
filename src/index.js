@@ -4,6 +4,7 @@ import { assertUsableApiKey, attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
 import { deepEqualJson, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { catalogURL, readCodexCatalog } from './catalog.js'
+import { isImageGenerationModel, streamCpaImage } from './cpa-image-stream.js'
 // The account/quota/speed functionality is an add-on. The upstream provider
 // below remains responsible for discovery, profile synchronization, and the
 // actual CLIProxyAPI model route.
@@ -497,6 +498,35 @@ export function apply(ctx, config) {
   ctx.on('credentials/updated', (ref) => {
     if (ref === API_KEY_REF) schedule({ authOnly: true })
   })
+
+  // Image-generation short-circuit. The upstream llm-pi-ai adapter rejects
+  // assistant image output on replay, so CPA image models (gpt-image-2,
+  // gpt-image-1.5, ...) are owned by this plugin instead of the chat path.
+  // We only intercept when the live provider profile actually advertises
+  // `imageGeneration` for the requested model, so the generic chat waterfall is
+  // left untouched for every ordinary text model.
+  ctx.on('llm/stream', (options, next) => {
+    if (options?.provider !== PROVIDER || !isImageGenerationModel(options.model)) return next()
+    const profile = ctx.settings.get(PI_NS)?.providers?.[PROVIDER]
+    const model = Array.isArray(profile?.models)
+      ? profile.models.find((m) => m?.id === options.model)
+      : undefined
+    if (model?.imageGeneration !== true) return next()
+    const route = {
+      provider: PROVIDER,
+      baseURL: normalizedBaseURL(profile.baseURL),
+      apiKeyEnv: profile.apiKeyEnv === undefined ? undefined : profile.apiKeyEnv,
+    }
+    return streamCpaImage(options, route, resolveApiKeyFor, () => ctx.get('attachments'))
+  })
+
+  const resolveApiKeyFor = async (ref) => {
+    const raw = ref === undefined
+      ? undefined
+      : (await ctx.credentials.resolve(credentialRef(ref)))?.value
+    return raw === undefined || raw.length === 0 ? undefined : raw
+  }
+
   ctx.effect(() => () => {
     stopped = true
     cancelWake()
