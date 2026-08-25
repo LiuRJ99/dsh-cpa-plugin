@@ -162,18 +162,18 @@ export interface CpaImageGenerationService {
 
   ```json
   "./image-generation": {
-    "types": "./src/image-generation.ts",
+    "types": "./src/image-generation-public.ts",
     "import": "./lib/image-generation.js"
   }
   ```
 
-- [ ] **Step 1: 写服务注册和动态配置失败测试。**
+- [x] **Step 1: 写服务注册和动态配置失败测试。**
 
   为 add-on 测试 harness 增加 `provide` 捕获、`get('settings')`、`inject(['credentials'])` 所需的最小 seam，避免引入真实外部 HTTP。测试 `apply` 后存在键为 `dshCpaImageGeneration` 的服务，并通过 fake fetch 验证：第一次调用使用初始 `baseURL` 与 credential；修改 settings profile 后第二次调用使用新 route；credential resolver 的引用来自当前 profile，而不是启动时快照。
 
   在主 Provider 回归 harness 中增加 `provided` 只读观察，确认 `src/index.js` 在具备 add-on seam 的上下文中仍加载 `lib/index.js`，且普通 discovery/profile 同步行为没有因服务注册改变。
 
-- [ ] **Step 2: 运行红灯检查。**
+- [x] **Step 2: 运行红灯检查。**（`tdd_mode: direct` 下以实现后 focused bundle/test 作为验证。）
 
   ```bash
   npm run bundle
@@ -182,7 +182,7 @@ export interface CpaImageGenerationService {
 
   预期服务尚未被 `ctx.provide` 注册或 package subpath 尚未稳定导出时失败。
 
-- [ ] **Step 3: 在 typed add-on 中注册服务。**
+- [x] **Step 3: 在 typed add-on 中注册服务。**
 
   在 `src/index.ts` 导入 `IMAGE_GENERATION_SERVICE`、`CpaImageGenerationService` 和 internal factory，并在 `readCredential` 闭包创建后注册：
 
@@ -202,11 +202,11 @@ export interface CpaImageGenerationService {
 
   route 不存在、profile 的 `api` 不是 `openai-responses`、key ref 缺失或 key 为空时由服务在调用时给出安全错误；不改变现有 model capability、execution、account/quota 和 Fast stream provider。
 
-- [ ] **Step 4: 增加 package export 和 contract import 检查。**
+- [x] **Step 4: 增加 package export 和 contract import 检查。**
 
-  在 `package.json` 增加 `./image-generation` export，保持 `src` 已在 `files` 中；运行构建后用 Node ESM import 检查 `IMAGE_GENERATION_SERVICE`，再让 add-on 测试从 `lib/index.js` 获取 service。若 declaration 生成稳定，`types` 改为构建出的 `.d.ts`；否则保持设计确定的 `src/image-generation.ts` source type path，并以 TypeScript contract test 验证它能解析。
+  在 `package.json` 增加 `./image-generation` export，保持 `src` 已在 `files` 中；运行构建后用 Node ESM import 检查 `IMAGE_GENERATION_SERVICE`，再让 add-on 测试从 `lib/index.js` 获取 service。公共类型入口使用 `src/image-generation-public.ts`，Host-only factory 由 internal runtime entry 组装，并以真实 TypeScript consumer contract test 验证稳定子路径可以解析且不暴露内部 factory。
 
-- [ ] **Step 5: 运行注册和构建验证。**
+- [x] **Step 5: 运行注册和构建验证。**
 
   ```bash
   npm run bundle
@@ -216,7 +216,7 @@ export interface CpaImageGenerationService {
 
   预期服务能从 `lib/index.js` 被 Host 注入，独立 `./image-generation` runtime entry 可加载，动态 route/key 测试通过。
 
-- [ ] **Step 6: 提交服务注册。**
+- [x] **Step 6: 提交服务注册。**（实现与修复分别提交为 `0d3f02c`、`a9ee3a2`、`5a68a4d`。）
 
   ```bash
   git add src/index.ts package.json test/image-generation-addon.test.js test/index.test.js tsdown.config.mjs

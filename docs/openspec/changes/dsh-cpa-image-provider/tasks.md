@@ -4,7 +4,7 @@
 - [x] 1.2 为 GPT Image 2 实现 `/v1/images/generations` 请求、数据 URL/图片响应解析和取消信号传递。
 - [x] 1.3 为 Gemini Image 实现 `/v1/chat/completions` 非流式请求，并解析 `message.images[].image_url.url`。
 - [x] 1.4 新增 `test/image-generation.test.js`，覆盖 GPT、Gemini、无图片响应、上游错误、鉴权错误和取消行为。
-- [ ] 1.5 在 `src/index.ts`/`src/index.js` 中解析活动 CPA route、注册 Host 服务，并通过 `./image-generation` 导出公共类型与运行时入口。
+- [x] 1.5 在 `src/index.ts`/`src/index.js` 中解析活动 CPA route、注册 Host 服务，并通过 `./image-generation` 导出公共类型与运行时入口。
 
 ## 2. 模型能力与选择器
 
