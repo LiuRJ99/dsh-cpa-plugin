@@ -500,7 +500,7 @@ function mergeModels(current: readonly CpaModelDraft[], found: readonly Discover
         ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
         ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
         reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel()),
-        extraFields: {},
+        extraFields: extraModelFields(model),
       })
     }
   }

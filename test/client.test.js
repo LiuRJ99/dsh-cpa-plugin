@@ -1,7 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import vm from 'node:vm'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
+import { isImageOnlyModel } from '../src/catalog.js'
 
 test('client bundle registers a lifecycle-owned Plugins Settings tab', async () => {
   let definition
@@ -175,9 +179,148 @@ test('model settings hide image-only rows while preserving full draft data and e
   assert.match(source, /function visibleModelEntries\(models: readonly CpaModelDraft\[\]\): Array<\{ index: number; model: CpaModelDraft \}> \{\s*return models\.flatMap\(\(model, index\) => isImageOnlyModel\(model\.id\) \? \[\] : \[\{ index, model \}\]\)\s*\}/)
   assert.match(source, /extraFields\?: Record<string, unknown>/)
   assert.match(source, /extraFields: extraModelFields\(raw\)/)
+  assert.match(source, /extraFields: extraModelFields\(model\)/)
   assert.match(source, /\.\.\.extraModelFields\(model\.extraFields\)/)
   assert.match(source, /this\.draft\.models = mergeModels\(this\.draft\.models, found\)/)
   assert.doesNotMatch(source, /gemini-3\.1-flash-lite.*isImageOnlyModel|gpt-image-2-mini.*isImageOnlyModel/)
+})
+
+test('discover then save preserves image-only metadata and hides the discovered row from visible settings', async () => {
+  const { CpaModelSettingsController } = await loadTsModule(
+    new URL('../src/client/cpa-model-settings.tsx', import.meta.url),
+    {
+      react: { useState() {}, useSyncExternalStore() {} },
+      'react/jsx-runtime': { jsx() {}, jsxs() {}, Fragment: Symbol.for('fragment') },
+      '@deepseek-ai/dsh-client-runtime/client': {
+        createSnapshotStore(initial) {
+          let snapshot = initial
+          return {
+            getSnapshot() { return snapshot },
+            set(next) { snapshot = next },
+            subscribe() { return () => {} },
+          }
+        },
+      },
+      './locales.ts': {},
+      './cpa-client.ts': {},
+      '../catalog.js': { isImageOnlyModel },
+    },
+  )
+
+  const mutateRequests = []
+  let revision = 1
+  const ok = (value) => ({ result: { ok: true, value } })
+  const api = {
+    settings: {
+      async describe() {
+        return ok({
+          writable: true,
+          namespaces: [{
+            ns: 'llm-pi-ai',
+            revision,
+            value: {
+              providers: {
+                CLIProxyAPI: {
+                  api: 'openai-responses',
+                  baseURL: 'http://127.0.0.1:8317/v1',
+                  apiKeyEnv: 'CPA_MODEL_API_KEY',
+                  models: [{
+                    id: 'gemini-3.1-flash-lite',
+                    name: 'Gemini Lite',
+                    reasoningEfforts: { off: null, low: 'low' },
+                  }],
+                },
+              },
+            },
+          }],
+        })
+      },
+      async mutate(request) {
+        mutateRequests.push(request)
+        revision += 1
+        return ok({
+          ns: 'llm-pi-ai',
+          revision,
+          value: {
+            providers: {
+              CLIProxyAPI: {
+                api: 'openai-responses',
+                baseURL: 'http://127.0.0.1:8317/v1',
+                apiKeyEnv: 'CPA_MODEL_API_KEY',
+              },
+            },
+          },
+        })
+      },
+    },
+    credentials: {
+      async describe() {
+        return ok({ credentials: { CPA_MODEL_API_KEY: { configured: true, writable: true } } })
+      },
+    },
+    llm: {
+      async discoverModels() {
+        return ok({
+          models: [{
+            id: 'gpt-image-2',
+            name: 'GPT Image 2',
+            contextWindow: 32000,
+            maxTokens: 1,
+            imageGeneration: true,
+            routeKind: 'image',
+            upstreamPath: '/v1/images/generations',
+          }],
+        })
+      },
+    },
+  }
+  const cpa = {
+    store: {
+      getSnapshot() {
+        return { providerId: 'CLIProxyAPI', endpoint: 'http://127.0.0.1:8317' }
+      },
+      subscribe() {
+        return () => {}
+      },
+    },
+  }
+
+  const controller = new CpaModelSettingsController(api, cpa)
+  const face = controller.inject()
+  await waitFor(() => face.hooks.cpaModelSettings.getSnapshot().loading === false)
+
+  face.discover()
+  await waitFor(() => face.hooks.cpaModelSettings.getSnapshot().discovering === false)
+
+  const visibleAfterDiscover = Array.from(
+    face.hooks.cpaModelSettings.getSnapshot().models,
+    (model) => model.id,
+  )
+  assert.deepEqual(visibleAfterDiscover, ['gemini-3.1-flash-lite'])
+
+  face.save()
+  await waitFor(() => mutateRequests.length === 1)
+
+  const modelsOp = mutateRequests[0].ops.find((op) => op.op === 'set' && op.path.join('/') === 'providers/CLIProxyAPI/models')
+  assert.ok(modelsOp)
+  assert.equal(Array.isArray(modelsOp.value), true)
+  const savedModels = JSON.parse(JSON.stringify(modelsOp.value))
+  assert.equal(savedModels.length, 2)
+  assert.deepEqual(savedModels.find((model) => model.id === 'gemini-3.1-flash-lite'), {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini Lite',
+    reasoningEfforts: { off: null, low: 'low' },
+  })
+  assert.deepEqual(savedModels.find((model) => model.id === 'gpt-image-2'), {
+    id: 'gpt-image-2',
+    name: 'GPT Image 2',
+    contextWindow: 32000,
+    maxTokens: 1,
+    reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
+    imageGeneration: true,
+    routeKind: 'image',
+    upstreamPath: '/v1/images/generations',
+  })
 })
 
 test('initial profile waits until the host writes complete model capabilities', async () => {
@@ -316,3 +459,34 @@ test('initial profile waits until the host writes complete model capabilities', 
     delete globalThis.window
   }
 })
+
+async function loadTsModule(url, requireMap) {
+  const source = await readFile(url, 'utf8')
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
+      esModuleInterop: true,
+    },
+    fileName: fileURLToPath(url),
+  }).outputText
+  const filename = fileURLToPath(url)
+  const dirname = filename.slice(0, filename.lastIndexOf('/'))
+  const module = { exports: {} }
+  const script = new vm.Script(`(function(require, module, exports, __filename, __dirname) {${compiled}\n})`, { filename })
+  const factory = script.runInNewContext({ console })
+  factory((id) => {
+    if (id in requireMap) return requireMap[id]
+    throw new Error(`unexpected require: ${id}`)
+  }, module, module.exports, filename, dirname)
+  return module.exports
+}
+
+async function waitFor(predicate, attempts = 100) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error('timed out waiting for condition')
+}

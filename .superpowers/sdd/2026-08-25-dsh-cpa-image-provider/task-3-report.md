@@ -55,3 +55,31 @@ Known `npm run typecheck` baseline failures:
 Concerns:
 
 - `npm run bundle` refreshed generated `lib/client.js`, `lib/client.js.map`, and `lib/composed-client.js`; they were left out of this task commit because file ownership for Task 3 is limited to the source/test files above plus this report.
+
+## Repair Round 1
+
+Date: 2026-08-25
+
+Changed files:
+
+- `src/client/cpa-model-settings.tsx`
+- `test/catalog.test.js`
+- `test/client.test.js`
+
+Repair notes:
+
+- Fixed `mergeModels()` so newly discovered models preserve `extraModelFields(model)` instead of being rewritten with `extraFields: {}`.
+- This keeps discovered image-only metadata such as `imageGeneration` and route-related extra fields alive through the `discover -> merge -> save` path, while leaving ordinary model merge behavior unchanged.
+- Added catalog predicate coverage for model-like `slug` and `model` inputs so `isImageOnlyModel()` is verified against the current `modelIdOf()` contract.
+- Added a focused executable regression in `test/client.test.js` that transpiles and loads `src/client/cpa-model-settings.tsx`, runs a real `CpaModelSettingsController` `discover -> save` flow, verifies the hidden image-only row stays absent from visible settings, and asserts the saved models payload still contains `imageGeneration` plus discovered route metadata.
+- Kept the existing source-contract assertions and strengthened them with an explicit `mergeModels()` metadata-preservation check.
+
+Verification:
+
+- `node --test test/catalog.test.js test/client.test.js` → exit `0`
+- `npm run bundle` → exit `0`
+- `npm run typecheck` → exit `2` (same baseline failure set as above; no new Task 3-specific typecheck regression observed)
+
+Concerns:
+
+- `npm run bundle` again refreshed generated `lib/client.js`, `lib/client.js.map`, and `lib/composed-client.js`; they remain intentionally uncommitted because they are outside Task 3 file ownership.
