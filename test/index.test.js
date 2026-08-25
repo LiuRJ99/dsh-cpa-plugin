@@ -163,6 +163,14 @@ function createContext(initialSection, initialCredential) {
     emit(event, ...args) {
       for (const listener of listeners.get(event) || []) listener(...args)
     },
+    runMiddleware(event, options, sentinel) {
+      const rows = listeners.get(event) || []
+      const invoke = (index) => {
+        if (index >= rows.length) return sentinel
+        return rows[index](options, () => invoke(index + 1))
+      }
+      return invoke(0)
+    },
     dispose() {
       for (const effect of effects.reverse()) effect()
     },
@@ -231,6 +239,50 @@ test('provider composition still exposes the Host image service through lib/inde
   apply(harness.ctx, await resolvedConfig())
   assert.equal(typeof harness.provided.get(IMAGE_GENERATION_SERVICE)?.generate, 'function')
   assert.deepEqual([...harness.discoveries.keys()], ['llm-cliproxyapi'])
+  harness.dispose()
+})
+
+test('legacy llm/stream image models now fall through to downstream middleware', async () => {
+  const harness = createContext({ providers: {
+    CLIProxyAPI: managedProfile({
+      models: [{ id: 'gpt-image-2', name: 'GPT Image 2', imageGeneration: true }],
+    }),
+  } }, 'initial-secret')
+  apply(harness.ctx, await resolvedConfig())
+  const sentinel = { ok: true }
+  assert.equal(
+    harness.runMiddleware('llm/stream', {
+      provider: 'CLIProxyAPI',
+      model: 'gpt-image-2',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'draw a cat' }],
+        source: { kind: 'user' },
+      })],
+    }, sentinel),
+    sentinel,
+  )
+  harness.dispose()
+})
+
+test('ordinary llm/stream text models still fall through to downstream middleware', async () => {
+  const harness = createContext({ providers: {
+    CLIProxyAPI: managedProfile({
+      models: [{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol', input: ['text'] }],
+    }),
+  } }, 'initial-secret')
+  apply(harness.ctx, await resolvedConfig())
+  const sentinel = { ok: true }
+  assert.equal(
+    harness.runMiddleware('llm/stream', {
+      provider: 'CLIProxyAPI',
+      model: 'gpt-5.6-sol',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'hello' }],
+        source: { kind: 'user' },
+      })],
+    }, sentinel),
+    sentinel,
+  )
   harness.dispose()
 })
 
