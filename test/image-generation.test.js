@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createCpaImageGenerationService } from '../lib/image-generation.js'
+import { createCpaImageGenerationService } from '../lib/image-generation-internal.js'
 
 const PNG_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47])
 const JPEG_BYTES = Uint8Array.from([0xff, 0xd8, 0xff])

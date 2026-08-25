@@ -9,7 +9,7 @@
     "./client": "./lib/composed-client.js",
     "./catalog": "./src/catalog.js",
     "./image-generation": {
-      "types": "./src/image-generation.ts",
+      "types": "./src/image-generation-public.ts",
       "import": "./lib/image-generation.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
@@ -20,6 +20,7 @@
     "bundle": "tsdown --config-loader native -c tsdown.config.mjs && node scripts/compose-client.mjs",
     "test": "node --test",
     "typecheck": "tsc --noEmit",
+    "typecheck:image-generation-contract": "tsc --noEmit --target ES2024 --module NodeNext --moduleResolution NodeNext --lib ES2024,DOM --strict --skipLibCheck test/image-generation-contract.ts",
     "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --check lib/index.js && node --test",
     "pack:github": "npm pack"
   },

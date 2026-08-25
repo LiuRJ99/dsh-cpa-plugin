@@ -177,6 +177,7 @@ test('Host add-on registers image service and resolves route plus credential at 
     apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI' }))
     const service = harness.provided.get(IMAGE_SERVICE_EXPORT.IMAGE_GENERATION_SERVICE)
     assert.equal(typeof service?.generate, 'function')
+    assert.equal('createCpaImageGenerationService' in IMAGE_SERVICE_EXPORT, false)
 
     await service.generate({
       engine: 'gpt',
