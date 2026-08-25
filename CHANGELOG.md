@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-08-25
+
+### Features
+
+- Added the public `./image-generation` entry for the `dshCpaImageGeneration` service contract so downstream consumers can import the stable image-generation types and service token.
+- Added engine-only CPA image generation routing with the verified GPT `images/generations` path and Gemini `chat/completions` image path.
+
+### Fixes & Improvements
+
+- Explicitly filters image-only models from the regular CPA selector/settings flows while keeping the dedicated image-generation service path available.
+- Keeps image ownership in a single CPA image service implementation and removes the legacy stream-owner interception from the public Host bundle.
+
 ## [0.2.0] - 2026-08-23
 
 ### Features
