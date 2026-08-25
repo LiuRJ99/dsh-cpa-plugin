@@ -42,3 +42,40 @@ Concerns:
 
 - `npm run bundle` refreshed generated client artifacts such as `lib/client.js`, `lib/client.js.map`, and `lib/composed-client.js`; per task instructions these files were left unstaged and excluded from the Task 4 commit.
 - The old `llm/stream` image owner has been removed entirely; image network requests are now owned only by the CPA image service bundle (`src/image-generation.ts` / `lib/image-generation-internal.js`).
+
+## Fix Round 1 — shipped Host artifact single-owner contract
+
+Fix summary:
+
+- Adjusted Host bundling to keep `@deepseek-ai/dsh-llm-pi-ai` and `@earendil-works/pi-ai` external at runtime while still bundling the plugin-owned `src/pi-ai/*` compatibility seam.
+- Promoted `@earendil-works/pi-ai` from dev-only to runtime dependency because the rebuilt Host artifact now imports it directly instead of inlining it.
+- Added a build-level regression in `test/index.test.js` that reads generated `lib/index.js` and `lib/image-generation-internal.js` to assert:
+  - shipped `lib/index.js` does not contain bundled `openai/resources/images.mjs`, `Images.generate()`, or `"/images/generations"` via the OpenAI SDK owner;
+  - shipped `lib/image-generation-internal.js` still contains the CPA image service implementation for `/images/generations`.
+
+Fix round modified files:
+
+- `tsdown.config.mjs`
+- `package.json`
+- `test/index.test.js`
+- `lib/index.js`
+- `.superpowers/sdd/2026-08-25-dsh-cpa-image-provider/task-4-report.md`
+
+Fix round verification commands:
+
+- `npm run bundle`
+  - exit code: `0`
+  - result: regenerated `lib/index.js` shrank from the previously inlined bundle to an external-import Host artifact and no longer contains the bundled OpenAI Images SDK implementation.
+- `npm test`
+  - exit code: `0`
+  - result: full suite passed, including the new build-level artifact contract test.
+- `node --test test/index.test.js test/image-generation.test.js test/image-generation-addon.test.js`
+  - exit code: `0`
+  - result: targeted suite passed, including `llm/stream` fallthrough regressions and the new artifact-owner assertion.
+- `npm run typecheck`
+  - exit code: `2`
+  - result: same pre-existing baseline failures remain in `src/client/*` and `src/index.ts` for missing client module declarations and implicit-`any`; no new build-boundary-specific type failures were introduced.
+
+Residual concern:
+
+- `npm run bundle` still refreshes `lib/client.js`, `lib/client.js.map`, and `lib/composed-client.js`; these remain intentionally unstaged for this fix round.

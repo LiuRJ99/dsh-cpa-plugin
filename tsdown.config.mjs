@@ -30,10 +30,15 @@ const host = {
   fixedExtension: false,
   clean: true,
   dts: false,
-  // These helpers are not part of dsh-llm-pi-ai's public export surface.
-  // Inline them so the Host artifact never imports a `.ts` source file.
   deps: {
-    alwaysBundle: [/^@deepseek-ai\/dsh-llm-pi-ai(?:\/|$)/],
+    // Keep the shipped Host artifact focused on plugin-owned logic. The local
+    // `src/pi-ai/*` compatibility shims are bundled, but the published runtime
+    // packages stay external so their transitive OpenAI Images SDK code does
+    // not become a second shipped image-network owner inside lib/index.js.
+    neverBundle: [
+      /^@deepseek-ai\/dsh-llm-pi-ai(?:\/|$)/,
+      /^@earendil-works\/pi-ai(?:\/|$)/,
+    ],
   },
 }
 

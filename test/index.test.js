@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { createUserMessage, LlmRuntime } from '@deepseek-ai/dsh-llm'
@@ -184,6 +185,18 @@ async function waitFor(predicate, timeoutMs = 1000) {
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
 }
+
+test('bundled Host artifact keeps the CPA image service but not the OpenAI Images SDK owner', async () => {
+  const hostBundle = await readFile(new URL('../lib/index.js', import.meta.url), 'utf8')
+  const imageServiceBundle = await readFile(new URL('../lib/image-generation-internal.js', import.meta.url), 'utf8')
+
+  assert.doesNotMatch(hostBundle, /openai\/resources\/images\.mjs/u)
+  assert.doesNotMatch(hostBundle, /class Images extends APIResource/u)
+  assert.doesNotMatch(hostBundle, /this\._client\.post\("\/images\/generations"/u)
+
+  assert.match(imageServiceBundle, /new URL\("images\/generations"/u)
+  assert.match(imageServiceBundle, /gpt-image-2/u)
+})
 
 test('registers rich discovery without competing for the provider directory', async () => {
   const harness = createContext({ providers: {} })
