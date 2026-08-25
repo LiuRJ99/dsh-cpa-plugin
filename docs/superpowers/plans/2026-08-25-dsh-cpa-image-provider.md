@@ -250,7 +250,7 @@ export function isImageOnlyModel(value) {
 }
 ```
 
-- [ ] **Step 1: 添加 catalog 和客户端失败断言。**
+- [x] **Step 1: 添加 catalog 和客户端失败断言。**
 
   `test/catalog.test.js` 增加：
 
@@ -265,7 +265,7 @@ export function isImageOnlyModel(value) {
 
   `test/client.test.js` 增加 source-level contract checks，要求 selector 的分组入口和 settings 的可编辑行都调用 `isImageOnlyModel`；同时断言 `gemini-3.1-flash-lite` 没有被过滤。测试不通过 React 内部状态伪造成功，纯展示策略由共享谓词和构建源检查共同确认。
 
-- [ ] **Step 2: 运行红灯检查。**
+- [x] **Step 2: 运行红灯检查。**（`tdd_mode: direct` 下以实现后 focused catalog/client tests 作为验证。）
 
   ```bash
   node --test test/catalog.test.js test/client.test.js
@@ -273,17 +273,17 @@ export function isImageOnlyModel(value) {
 
   预期 Gemini image-only 标记和客户端过滤断言在旧实现上失败。
 
-- [ ] **Step 3: 替换 catalog 中的旧图片模型推断。**
+- [x] **Step 3: 替换 catalog 中的旧图片模型推断。**
 
   用上述三项显式集合替换旧的 GPT 集合和 `mini/hd` 后缀推断。`modelProfileOf` 对集合内 ID 设置 `imageGeneration: true`；隐藏 entry 的保留策略仍只服务于 Host catalog，不把 `visibility` 或名称后缀扩展成新的图片模型。`isHiddenImageModel` 改为复用显式谓词，保证隐藏的 `gpt-image-2` 和 Gemini image entry 能进入 Host 能力目录。
 
-- [ ] **Step 4: 过滤普通 selector，同时保留当前 route 数据。**
+- [x] **Step 4: 过滤普通 selector，同时保留当前 route 数据。**
 
   在 `cpa-model-select.tsx` 的 `displayModelGroups` 分组前过滤所有 `isImageOnlyModel(model.id)`，图片模型组成的 group 不渲染任何普通选择行，含普通 Gemini 模型的 group 正常渲染。
 
   在 `cpa-model-settings.tsx` 将 draft 全量数据和可见行分开：`draft.models` 保留 image-only entry 以避免保存时丢失 Host route 元数据；`projection().models`、可见 index 到实际 index 的编辑/删除映射只使用非图片行；`mergeModels` 可以保存新发现的图片 entry，但不把它们呈现为可编辑模型行。这样 UI 隐藏模型而不改变服务的动态 route。
 
-- [ ] **Step 5: 运行客户端和 catalog 验证。**
+- [x] **Step 5: 运行客户端和 catalog 验证。**
 
   ```bash
   node --test test/catalog.test.js test/client.test.js
@@ -293,7 +293,7 @@ export function isImageOnlyModel(value) {
 
   预期三个 image-only ID 不出现在普通选择行，`gemini-3.1-flash-lite` 仍在普通列表，客户端 bundle 和 TypeScript 检查通过。
 
-- [ ] **Step 6: 提交 selector policy。**
+- [x] **Step 6: 提交 selector policy。**（实现与修复提交为 `047d043`、`9494826`。）
 
   ```bash
   git add src/catalog.js src/client/cpa-model-select.tsx src/client/cpa-model-settings.tsx test/catalog.test.js test/client.test.js

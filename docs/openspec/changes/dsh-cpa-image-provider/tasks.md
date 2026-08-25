@@ -8,10 +8,10 @@
 
 ## 2. 模型能力与选择器
 
-- [ ] 2.1 在 `src/catalog.js` 中显式标记 `gpt-image-1.5`、`gpt-image-2` 和 `gemini-3.1-flash-image` 为生图专用模型。
-- [ ] 2.2 抽取可复用的 image-only 判断逻辑，确保 `gemini-3.1-flash-lite` 和 `-high/-low/-agent` 别名不会被误判。
-- [ ] 2.3 在 `src/client/cpa-model-select.tsx` 和 `src/client/cpa-model-settings.tsx` 中过滤生图专用模型行，但不影响图片服务调用。
-- [ ] 2.4 更新 `test/catalog.test.js` 与 `test/client.test.js`，验证生图模型隐藏、普通 Gemini 模型保留和服务独立可用。
+- [x] 2.1 在 `src/catalog.js` 中显式标记 `gpt-image-1.5`、`gpt-image-2` 和 `gemini-3.1-flash-image` 为生图专用模型。
+- [x] 2.2 抽取可复用的 image-only 判断逻辑，确保 `gemini-3.1-flash-lite` 和 `-high/-low/-agent` 别名不会被误判。
+- [x] 2.3 在 `src/client/cpa-model-select.tsx` 和 `src/client/cpa-model-settings.tsx` 中过滤生图专用模型行，但不影响图片服务调用。
+- [x] 2.4 更新 `test/catalog.test.js` 与 `test/client.test.js`，验证生图模型隐藏、普通 Gemini 模型保留和服务独立可用。
 
 ## 3. 单一网络所有者
 
