@@ -59,7 +59,7 @@ export interface CpaImageGenerationService {
 }
 ```
 
-`CpaImageGenerationRequest` 的可选尺寸字段用于保持下游工具契约的扩展性。MVP 只对已经由 CPA relay 验证的请求字段做协议映射；未被当前 relay 契约确认的 Gemini 尺寸控制不改变路由和响应语义，不额外发明供应商私有字段。
+`CpaImageGenerationRequest` 的可选尺寸字段用于保持下游工具契约的扩展性。Gemini 的 `aspectRatio` 和 `imageSize` 通过 CLIProxyAPI 已支持的 `image_config` 扩展映射到原生 `generationConfig.imageConfig`；通用 `size` 字段仅适用于其他引擎，在 Gemini 请求中忽略。
 
 服务契约和运行时实现通过 `./image-generation` 子路径发布。源代码保持单一实现，`lib/index.js` 中的 add-on 和独立子路径构建不得各自维护一套请求解析逻辑。
 
@@ -235,6 +235,6 @@ Provider change 先在独立 worktree 完成并产出可被下游导入的包。
 
 ## 11. 已知边界
 
-- 当前 MVP 的 Gemini 请求使用已验证的最小 chat envelope；Gemini 专属尺寸控制只有在 CPA relay 形成稳定兼容字段后再扩展。
+- Gemini 专属尺寸控制依赖 CLIProxyAPI 版本对 `image_config` 的支持；若 relay 版本过旧，仍可能退回默认尺寸，但插件不会因参数兼容性在本地预先失败。
 - 引擎级公共契约不会让下游选择任意未来模型；新增模型应在 CPA 内部补能力映射和测试。
 - 本地 relay 的成功只能证明当前本地配置和协议路径，不能证明所有 CPA 账号、上游供应商或生产部署均正确。

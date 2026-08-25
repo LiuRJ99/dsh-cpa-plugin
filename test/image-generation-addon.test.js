@@ -42,6 +42,7 @@ function createHarness() {
   const resolvedRefs = []
   let keyA = 'SYNTHETIC_CPA_MARKER_A'
   let keyB = 'SYNTHETIC_CPA_MARKER_B'
+  let nativeKey = 'SYNTHETIC_NATIVE_CPA_MARKER'
 
   const settingsService = {
     get(ns) {
@@ -84,6 +85,9 @@ function createHarness() {
       }
       if (name === String(credentialRef('SYNTHETIC_CPA_REF_B'))) {
         return keyB === undefined ? undefined : { value: keyB }
+      }
+      if (name === String(credentialRef('DSH_CLIPROXY_API_KEY'))) {
+        return nativeKey === undefined ? undefined : { value: nativeKey }
       }
       return undefined
     },
@@ -210,6 +214,42 @@ test('Host add-on registers image service and resolves route plus credential at 
     assert.equal(calls[0].body.model, 'gpt-image-2')
     assert.equal(calls[1].url, 'http://127.0.0.1:9417/v1/images/generations')
     assert.match(calls[1].authorization ?? '', /^Bearer \S+$/u)
+  } finally {
+    globalThis.fetch = previousFetch
+    harness.dispose()
+  }
+})
+
+test('Host add-on reuses the native CLIProxyAPI model key for the add-on key reference', async () => {
+  const previousFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (input, init) => {
+    calls.push({
+      url: input instanceof Request ? input.url : String(input),
+      authorization: new Headers(init?.headers).get('authorization'),
+    })
+    return new Response(JSON.stringify({
+      data: [{ b64_json: Buffer.from('png').toString('base64') }],
+    }), { status: 200 })
+  }
+
+  const harness = createHarness()
+  try {
+    apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI' }))
+    await harness.updateProfile(managedProfile({ apiKeyEnv: 'CPA_MODEL_API_KEY' }))
+    const service = harness.provided.get(IMAGE_SERVICE_EXPORT.IMAGE_GENERATION_SERVICE)
+
+    await service.generate({
+      engine: 'gpt',
+      prompt: 'reuse native key',
+      signal: new AbortController().signal,
+    })
+
+    assert.deepEqual(harness.resolvedRefs, [
+      String(credentialRef('CPA_MODEL_API_KEY')),
+      String(credentialRef('DSH_CLIPROXY_API_KEY')),
+    ])
+    assert.equal(calls[0].authorization, 'Bearer SYNTHETIC_NATIVE_CPA_MARKER')
   } finally {
     globalThis.fetch = previousFetch
     harness.dispose()

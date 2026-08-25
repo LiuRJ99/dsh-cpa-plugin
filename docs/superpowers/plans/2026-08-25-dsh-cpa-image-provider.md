@@ -119,7 +119,7 @@ export interface CpaImageGenerationService {
 
   `generate` 的顺序固定为：检查已取消的 signal；trim 并校验非空 prompt；校验 engine；解析当前 route；解析非空 credential；根据 engine 生成请求；有界读取响应；解析并返回第一张标准化图片。
 
-  GPT 请求 body 为 `model`、`prompt`、`n: 1`、`output_format: 'png'`、`size`、`quality: 'auto'`，默认 `size` 为 `1024x1024`，`size` 优先于 `imageSize`。未提供可验证映射的 `aspectRatio` 以 `UNSUPPORTED_OPTION` 拒绝。Gemini 只发送 `model`、`messages: [{ role: 'user', content: prompt }]`、`stream: false`；Gemini 的尺寸扩展字段在当前 MVP 中以 `UNSUPPORTED_OPTION` 拒绝，不向 CPA 发明私有字段。
+  GPT 请求 body 为 `model`、`prompt`、`n: 1`、`output_format: 'png'`、`size`、`quality: 'auto'`，默认 `size` 为 `1024x1024`，`size` 优先于 `imageSize`。未提供可验证映射的 `aspectRatio` 以 `UNSUPPORTED_OPTION` 拒绝。Gemini 默认使用 `model`、`messages: [{ role: 'user', content: prompt }]`、`stream: false`；收到 `aspectRatio` 或 `imageSize` 时额外发送 `modalities: ['image']` 与 CLIProxyAPI 约定的 `image_config`，由 relay 转换为 Gemini 的 `generationConfig.imageConfig`。不适用于 Gemini 的通用 `size` 字段被忽略。
 
 - [x] **Step 4: 实现安全的响应读取和解析。**
 

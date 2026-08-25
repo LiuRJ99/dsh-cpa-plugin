@@ -31,6 +31,8 @@ export const name = 'dsh-cpa-plugin'
 const MODEL_SETTINGS_NS = settingsNamespace('llm-pi-ai')
 const MODEL_DISCOVERY_NS = settingsNamespace('llm-cliproxyapi')
 const MODEL_KEY_REF = 'CPA_MODEL_API_KEY'
+/** The native CLIProxyAPI provider's credential reference. */
+const NATIVE_MODEL_KEY_REF = 'DSH_CLIPROXY_API_KEY'
 const MODEL_REFRESH_EVENT = 'dsh-cpa/refresh-models'
 const REFRESH_SETTINGS_NS = settingsNamespace('dsh-cpa-plugin')
 const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000] as const
@@ -119,6 +121,21 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
       }
     }
   })
+  /**
+   * The native CLIProxyAPI settings surface historically stored the model key
+   * under DSH_CLIPROXY_API_KEY, while the add-on model editor defaults to
+   * CPA_MODEL_API_KEY. Image generation is an add-on capability, so accept
+   * either known reference and keep one DSH installation from requiring the
+   * user to enter the same key twice.
+   */
+  const readImageCredential = async (ref: string): Promise<string | undefined> => {
+    const primary = await readCredential(ref)
+    if (primary !== undefined && primary.trim() !== '') return primary
+    if (ref !== MODEL_KEY_REF && ref !== NATIVE_MODEL_KEY_REF) return primary
+    const fallbackRef = ref === MODEL_KEY_REF ? NATIVE_MODEL_KEY_REF : MODEL_KEY_REF
+    const fallback = await readCredential(fallbackRef)
+    return fallback !== undefined && fallback.trim() !== '' ? fallback : primary
+  }
   const imageService = createCpaImageGenerationService(
     (_engine) => {
       const route = cpaFastRoute(ctx, effectiveConfig(ctx, config))
@@ -127,7 +144,7 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
         apiKeyEnv: route.apiKeyEnv,
       }
     },
-    readCredential,
+    readImageCredential,
   )
   ctx.provide(IMAGE_GENERATION_SERVICE, imageService satisfies CpaImageGenerationService)
 
@@ -461,7 +478,7 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
   return {
     provider: config.providerId,
     baseURL: modelEndpoint(baseURL),
-    apiKeyEnv: stringValue(profile?.apiKeyEnv),
+    apiKeyEnv: stringValue(profile?.apiKeyEnv) ?? NATIVE_MODEL_KEY_REF,
     models,
   }
 }

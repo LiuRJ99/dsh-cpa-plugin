@@ -80,9 +80,7 @@ export function createCpaImageGenerationService(
         return parseGptImage(response, fetchImpl, request.signal)
       }
 
-      if (request.imageSize !== undefined || request.size !== undefined || request.aspectRatio !== undefined) {
-        throw new LlmError('CPA Gemini image generation MVP does not support size or aspectRatio options', 'UNSUPPORTED_OPTION')
-      }
+      const imageConfig = geminiImageConfigOf(request)
       const response = await requestJson(fetchImpl, chatCompletionsURL(route.baseURL), {
         method: 'POST',
         signal: request.signal,
@@ -91,11 +89,39 @@ export function createCpaImageGenerationService(
           model: GEMINI_MODEL,
           messages: [{ role: 'user', content: prompt }],
           stream: false,
+          ...(imageConfig === undefined ? {} : {
+            modalities: ['image'],
+            image_config: imageConfig,
+          }),
         }),
       })
       return parseGeminiImage(response)
     },
   }
+}
+
+/**
+ * Map the public Gemini controls to CLIProxyAPI's OpenAI-compatible extension.
+ *
+ * Gemini's native API supports aspect ratio and image size, while the CPA
+ * chat-completions translator accepts them under `image_config` and maps them
+ * to `generationConfig.imageConfig`. The generic `size` field belongs to
+ * OpenAI-style image endpoints, so an accidental Gemini value is ignored
+ * rather than causing a model-visible retry.
+ */
+function geminiImageConfigOf(request: CpaImageGenerationRequest): Record<string, string> | undefined {
+  const aspectRatio = normalizedOption(request.aspectRatio)
+  const imageSize = normalizedOption(request.imageSize)
+  if (aspectRatio === undefined && imageSize === undefined) return undefined
+  return {
+    ...(aspectRatio === undefined ? {} : { aspect_ratio: aspectRatio }),
+    ...(imageSize === undefined ? {} : { image_size: imageSize }),
+  }
+}
+
+function normalizedOption(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized === undefined || normalized === '' ? undefined : normalized
 }
 
 function cpaHeaders(apiKey: string): HeadersInit {

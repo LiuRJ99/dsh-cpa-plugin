@@ -135,7 +135,7 @@ test('rejects empty prompts before calling CPA', async () => {
   assert.equal(calls.length, 0)
 })
 
-test('rejects unsupported options without inventing wire fields', async () => {
+test('rejects GPT aspectRatio without a verified OpenAI size mapping', async () => {
   const { service } = createHarness()
 
   await assert.rejects(
@@ -150,19 +150,32 @@ test('rejects unsupported options without inventing wire fields', async () => {
       return true
     },
   )
+})
 
-  await assert.rejects(
-    service.generate({
-      engine: 'gemini',
-      prompt: 'x',
-      imageSize: '1024x1024',
-      signal: new AbortController().signal,
-    }),
-    (error) => {
-      assertLlmError(error, 'UNSUPPORTED_OPTION')
-      return true
-    },
-  )
+test('Gemini forwards aspect ratio and image size through image_config', async () => {
+  const { calls, service } = createHarness({
+    fetchImpl: async () => new Response(JSON.stringify({
+      choices: [{
+        message: {
+          images: [{ image_url: { url: `data:image/jpeg;base64,${JPEG_B64}` } }],
+        },
+      }],
+    }), { status: 200 }),
+  })
+
+  await service.generate({
+    engine: 'gemini',
+    prompt: 'x',
+    aspectRatio: '16:9',
+    imageSize: '2K',
+    size: '1024x1024',
+    signal: new AbortController().signal,
+  })
+
+  const body = JSON.parse(calls[0].init.body)
+  assert.deepEqual(body.modalities, ['image'])
+  assert.deepEqual(body.image_config, { aspect_ratio: '16:9', image_size: '2K' })
+  assert.equal(body.size, undefined)
 })
 
 test('rejects success responses that contain no image payload', async () => {
