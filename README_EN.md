@@ -60,6 +60,12 @@ This project keeps only the following additions on top of the official CLIProxyA
 - Automatically invalidates stale speed capabilities during catalog refresh while preserving manually configured model capacities and parameters.
 - Fully compatible with DeepSeek Harness RC.8+ Replay Envelopes and error classification.
 
+### 3. Image Generation Service
+
+- Exports the stable `./image-generation` entry contract and `dshCpaImageGeneration` service token for downstream consumers.
+- Unified routing for GPT (`images/generations`) and Gemini (`chat/completions`) CPA image generation protocols.
+- Automatically filters image-only models from standard model selectors and settings to avoid conflicts with text conversation flows.
+
 ## Current test coverage
 
 The following CLIProxyAPI channels have been tested in practice:

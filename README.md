@@ -60,6 +60,12 @@ dsh plugin --profile web update
 - 模型目录刷新时自动清理与失效过期的速度能力，同时完整保留用户手动配置的模型容量与参数。
 - 深度适配 DeepSeek Harness RC.8+ 的 Replay Envelope 与错误分类机制。
 
+### 3. 图像生成服务
+
+- 导出稳定的 `./image-generation` 入口契约与 `dshCpaImageGeneration` 服务标识，供下游消费方直接集成。
+- 统一承接 GPT (`images/generations`) 与 Gemini (`chat/completions`) 双路 CPA 图像生成协议。
+- 在常规模型选择器与设置中自动过滤仅图像模型（Image-only models），避免与文本对话流冲突。
+
 ## 当前测试范围
 
 目前只实际测试过以下 CLIProxyAPI 渠道：
