@@ -3,6 +3,8 @@ import type { DiscoveredModelView, IApiClient, SettingsNamespaceView } from '@de
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { CpaLocaleKey } from './locales.ts'
 import type { CpaClient } from './cpa-client.ts'
+// @ts-expect-error Runtime JS module is exported without a sibling declaration file.
+import { isImageOnlyModel } from '../catalog.js'
 
 const SETTINGS_NS = 'llm-pi-ai'
 const DISCOVERY_NS = 'llm-cliproxyapi'
@@ -30,6 +32,7 @@ export interface CpaModelDraft {
   contextWindow?: number
   maxTokens?: number
   reasoningEfforts?: CpaReasoningEfforts
+  extraFields?: Record<string, unknown>
 }
 
 interface CpaModelSettingsState {
@@ -137,9 +140,11 @@ export class CpaModelSettingsController {
         this.publish()
       },
       editModel: (index, field, value) => {
-        const model = this.draft.models[index]
+        const actualIndex = visibleModelEntries(this.draft.models)[index]?.index
+        if (actualIndex === undefined) return
+        const model = this.draft.models[actualIndex]
         if (model === undefined) return
-        this.draft.models[index] = { ...model, [field]: value }
+        this.draft.models[actualIndex] = { ...model, [field]: value }
         this.error = null
         this.publish()
       },
@@ -153,7 +158,9 @@ export class CpaModelSettingsController {
         this.publish()
       },
       removeModel: (index) => {
-        this.draft.models.splice(index, 1)
+        const actualIndex = visibleModelEntries(this.draft.models)[index]?.index
+        if (actualIndex === undefined) return
+        this.draft.models.splice(actualIndex, 1)
         this.error = null
         this.publish()
       },
@@ -363,6 +370,7 @@ export class CpaModelSettingsController {
         ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
         ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
         reasoningEfforts: cloneReasoningEfforts(model.reasoningEfforts),
+        extraFields: extraModelFields(model),
       }))
       this.baseline = cloneDraft(this.draft, models.value)
       await this.readCredential()
@@ -397,7 +405,7 @@ export class CpaModelSettingsController {
       keyDraft: this.draft.keyDraft,
       keyConfigured: this.keyConfigured,
       keyWritable: this.keyWritable,
-      models: this.draft.models,
+      models: visibleModelEntries(this.draft.models).map(({ model }) => model),
       error: this.error,
       discoveryError: this.discoveryError,
     }
@@ -477,6 +485,7 @@ function modelsOf(value: unknown): CpaModelDraft[] {
       ...positiveInteger(raw.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(raw.contextWindow) },
       ...positiveInteger(raw.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(raw.maxTokens) },
       reasoningEfforts: cloneReasoningEfforts(reasoningEfforts),
+      extraFields: extraModelFields(raw),
     }]
   })
 }
@@ -491,6 +500,7 @@ function mergeModels(current: readonly CpaModelDraft[], found: readonly Discover
         ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
         ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
         reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel()),
+        extraFields: {},
       })
     }
   }
@@ -508,6 +518,7 @@ function normalizeModels(models: readonly CpaModelDraft[]): { value: readonly No
     const name = model.name.trim()
     const reasoningEfforts = reasoningEffortsForModel(model.reasoningEfforts)
     value.push({
+      ...extraModelFields(model.extraFields),
       ...(name === '' ? { id } : { id, name }),
       ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
       ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
@@ -528,8 +539,25 @@ function cloneDraft(draft: ModelDraftState, models: readonly NormalizedCpaModel[
       ...positiveInteger(model.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(model.contextWindow) },
       ...positiveInteger(model.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(model.maxTokens) },
       reasoningEfforts: cloneReasoningEfforts(reasoningEffortsForModel(model.reasoningEfforts)),
+      extraFields: extraModelFields(model),
     })),
   }
+}
+
+function visibleModelEntries(models: readonly CpaModelDraft[]): Array<{ index: number; model: CpaModelDraft }> {
+  return models.flatMap((model, index) => isImageOnlyModel(model.id) ? [] : [{ index, model }])
+}
+
+function extraModelFields(value: unknown): Record<string, unknown> {
+  const raw = valueObject(value)
+  if (raw === undefined) return {}
+  return Object.fromEntries(Object.entries(raw).filter(([key]) => (
+    key !== 'id'
+    && key !== 'name'
+    && key !== 'contextWindow'
+    && key !== 'maxTokens'
+    && key !== 'reasoningEfforts'
+  )))
 }
 
 function sameDraft(left: ModelDraftState, right: ModelDraftState): boolean {

@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { catalogURL, modelProfileOf, readCodexCatalog, reasoningEffortsOf } from '../src/catalog.js'
+import {
+  catalogURL,
+  isHiddenImageModel,
+  isImageOnlyModel,
+  modelProfileOf,
+  readCodexCatalog,
+  reasoningEffortsOf,
+} from '../src/catalog.js'
 
 test('maps Codex reasoning levels to Harness canonical levels', () => {
   assert.deepEqual(reasoningEffortsOf({ supported_reasoning_levels: [
@@ -91,6 +98,41 @@ test('filters hidden models by default and deduplicates slugs', () => {
     { slug: 'hidden', visibility: 'hide', context_window: 3000 },
   ] }, { defaultContextWindow: 262144, defaultMaxTokens: 32768, defaultInput: ['text'] })
   assert.deepEqual(models.map((model) => model.id), ['visible'])
+})
+
+test('marks only the explicit image-only ids and keeps ordinary gemini models visible', () => {
+  assert.equal(modelProfileOf({ id: 'gpt-image-2' })?.imageGeneration, true)
+  assert.equal(modelProfileOf({ id: 'gemini-3.1-flash-image' })?.imageGeneration, true)
+  assert.equal(modelProfileOf({ id: 'gpt-image-1.5' })?.imageGeneration, true)
+  assert.equal(modelProfileOf({ id: 'gemini-3.1-flash-lite' })?.imageGeneration, undefined)
+  assert.equal(modelProfileOf({ id: 'gemini-3.1-flash-high' })?.imageGeneration, undefined)
+  assert.equal(modelProfileOf({ id: 'gpt-image-2-mini' })?.imageGeneration, undefined)
+  assert.equal(isImageOnlyModel({ id: 'gpt-image-2' }), true)
+  assert.equal(isImageOnlyModel('gemini-3.1-flash-image'), true)
+  assert.equal(isImageOnlyModel({ id: 'gemini-3.1-flash-lite' }), false)
+  assert.equal(isImageOnlyModel({ id: 'gemini-3.1-flash-high' }), false)
+  assert.equal(isImageOnlyModel({ id: 'gemini-3.1-flash-low' }), false)
+  assert.equal(isImageOnlyModel({ id: 'gemini-3.1-flash-agent' }), false)
+})
+
+test('re-admits hidden image-only entries without using suffix inference', () => {
+  const models = readCodexCatalog({ models: [
+    { id: 'gpt-image-2', visibility: 'hide', max_context_window: 32000 },
+    { id: 'gemini-3.1-flash-image', visibility: 'hide', max_context_window: 32000 },
+    { id: 'gemini-3.1-flash-lite', visibility: 'hide', max_context_window: 32000 },
+    { id: 'gpt-image-2-mini', visibility: 'hide', max_context_window: 32000 },
+    { id: 'gemini-3.1-flash-high', max_context_window: 32000 },
+  ] }, { defaultContextWindow: 262144, defaultMaxTokens: 32768, defaultInput: ['text'] })
+
+  assert.deepEqual(models.map((model) => model.id), [
+    'gpt-image-2',
+    'gemini-3.1-flash-image',
+    'gemini-3.1-flash-high',
+  ])
+  assert.equal(isHiddenImageModel({ id: 'gpt-image-2', visibility: 'hide' }), true)
+  assert.equal(isHiddenImageModel({ id: 'gemini-3.1-flash-image', visibility: 'hide' }), true)
+  assert.equal(isHiddenImageModel({ id: 'gemini-3.1-flash-lite', visibility: 'hide' }), false)
+  assert.equal(isHiddenImageModel({ id: 'gpt-image-2-mini', visibility: 'hide' }), false)
 })
 
 test('builds the Codex-compatible catalog URL', () => {

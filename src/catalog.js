@@ -2,6 +2,12 @@ const CANONICAL_REASONING_LEVELS = new Set([
   'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
 ])
 
+const IMAGE_ONLY_MODEL_IDS = new Set([
+  'gpt-image-1.5',
+  'gpt-image-2',
+  'gemini-3.1-flash-image',
+])
+
 function positiveInteger(...values) {
   for (const value of values) {
     if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value
@@ -57,6 +63,7 @@ export function modelProfileOf(entry, options = {}) {
   // the text chat catalog. Re-admit them so the image stream path can own them,
   // but keep every other hidden model out unless the caller opts in.
   const hiddenImage = isHiddenImageModel(entry, options)
+  const imageOnly = isImageOnlyModel(id)
   if (entry?.visibility === 'hide' && !options.includeHiddenModels && !hiddenImage) return undefined
   const reasoningEfforts = reasoningEffortsOf(entry)
   return {
@@ -66,7 +73,7 @@ export function modelProfileOf(entry, options = {}) {
     maxTokens: positiveInteger(entry?.max_output_tokens, entry?.max_completion_tokens, entry?.max_tokens, options.defaultMaxTokens),
     input: inputModalitiesOf(entry, options.defaultInput ?? ['text']),
     ...(reasoningEfforts ? { reasoningEfforts } : {}),
-    ...(hiddenImage || IMAGE_MODELS.has(id) || IMAGE_MODELS.has(id.replace(/-(mini|hd)$/u, '')) ? { imageGeneration: true } : {}),
+    ...(imageOnly ? { imageGeneration: true } : {}),
   }
 }
 
@@ -84,17 +91,10 @@ export function readCodexCatalog(body, options = {}) {
   return models
 }
 
-// Image-generation model ids the plugin owns outside the text chat catalog.
-// CPA hides gpt-image-2 (and optionally gpt-image-1.5) behind visibility:hide;
-// both are admitted so the CPA image stream can serve them.
-const IMAGE_MODELS = new Set([
-  'gpt-image-1',
-  'gpt-image-1.5',
-  'gpt-image-2',
-  'gpt-image-2-mini',
-  'gpt-image-2-hd',
-  'gpt-image-3',
-])
+export function isImageOnlyModel(value) {
+  const id = typeof value === 'string' ? modelIdOf({ id: value }) : modelIdOf(value)
+  return id !== undefined && IMAGE_ONLY_MODEL_IDS.has(id)
+}
 
 /**
  * True when a raw catalog entry is a hidden image-generation model. CPA marks
@@ -102,9 +102,7 @@ const IMAGE_MODELS = new Set([
  * plugin re-admits them so the image-generation stream path can own them.
  */
 export function isHiddenImageModel(entry, options = {}) {
-  const id = modelIdOf(entry)
-  if (id === undefined) return false
-  if (!IMAGE_MODELS.has(id) && !IMAGE_MODELS.has(id.replace(/-(mini|hd)$/u, ''))) return false
+  if (!isImageOnlyModel(entry)) return false
   return entry?.visibility === 'hide' || options.includeHiddenImageModels === true
 }
 

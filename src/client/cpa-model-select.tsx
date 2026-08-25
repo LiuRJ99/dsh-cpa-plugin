@@ -16,6 +16,8 @@ import { hasFastSpeedCapability, type CpaClient } from './cpa-client.ts'
 import { accountAvailability } from './cpa-account-display.ts'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type { CpaSpeed } from './protocol.ts'
+// @ts-expect-error Runtime JS module is exported without a sibling declaration file.
+import { isImageOnlyModel } from '../catalog.js'
 
 type Pane = 'root' | 'model' | 'effort' | 'speed'
 
@@ -272,7 +274,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
                   })}
                 </section>
               ))}
-              {state.status === 'ready' && choices.length === 0 ? <div className="dsh-cpa-status">{t('status.empty')}</div> : null}
+              {state.status === 'ready' && displayGroups.length === 0 ? <div className="dsh-cpa-status">{t('status.empty')}</div> : null}
             </div>
           ) : null}
 
@@ -342,9 +344,12 @@ function displayModelGroups(
   t: Props['t'],
 ): DisplayGroup[] {
   return groups.flatMap(group => {
-    if (group.id !== cpaProviderId) return [{ ...group, providerId: group.id }]
+    if (group.id !== cpaProviderId) {
+      const models = visibleModelsOf(group.models)
+      return models.length === 0 ? [] : [{ ...group, providerId: group.id, models }]
+    }
     const buckets = new Map<ModelFamily, ModelCatalogModel[]>()
-    for (const model of group.models) {
+    for (const model of visibleModelsOf(group.models)) {
       const family = familyOf(model)
       const bucket = buckets.get(family)
       if (bucket === undefined) buckets.set(family, [model])
@@ -361,6 +366,10 @@ function displayModelGroups(
       }]
     })
   })
+}
+
+function visibleModelsOf(models: readonly ModelCatalogModel[]): ModelCatalogModel[] {
+  return models.filter(model => !isImageOnlyModel(model.id))
 }
 
 type ModelFamily = 'gpt' | 'claude' | 'gemini' | 'deepseek' | 'other'

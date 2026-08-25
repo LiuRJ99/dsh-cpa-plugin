@@ -157,6 +157,29 @@ test('model popup does not expose the non-binding account picker', async () => {
   assert.doesNotMatch(source, /chooseAccount/)
 })
 
+test('ordinary model selector filters image-only entries via the shared catalog predicate', async () => {
+  const source = await readFile(new URL('../src/client/cpa-model-select.tsx', import.meta.url), 'utf8')
+  assert.match(source, /import\s+\{\s*isImageOnlyModel\s*\}\s+from '\.\.\/catalog\.js'/)
+  assert.match(source, /function visibleModelsOf\(models: readonly ModelCatalogModel\[\]\): ModelCatalogModel\[\] \{\s*return models\.filter\(model => !isImageOnlyModel\(model\.id\)\)\s*\}/)
+  assert.match(source, /if \(group\.id !== cpaProviderId\) \{\s*const models = visibleModelsOf\(group\.models\)/)
+  assert.match(source, /for \(const model of visibleModelsOf\(group\.models\)\)/)
+  assert.match(source, /displayGroups\.length === 0/)
+  assert.doesNotMatch(source, /gpt-image-2-mini|gemini-3\.1-flash-high|gemini-3\.1-flash-lite/)
+})
+
+test('model settings hide image-only rows while preserving full draft data and extras on save', async () => {
+  const source = await readFile(new URL('../src/client/cpa-model-settings.tsx', import.meta.url), 'utf8')
+  assert.match(source, /import\s+\{\s*isImageOnlyModel\s*\}\s+from '\.\.\/catalog\.js'/)
+  assert.match(source, /const actualIndex = visibleModelEntries\(this\.draft\.models\)\[index\]\?\.index/)
+  assert.match(source, /models: visibleModelEntries\(this\.draft\.models\)\.map\(\(\{ model \}\) => model\)/)
+  assert.match(source, /function visibleModelEntries\(models: readonly CpaModelDraft\[\]\): Array<\{ index: number; model: CpaModelDraft \}> \{\s*return models\.flatMap\(\(model, index\) => isImageOnlyModel\(model\.id\) \? \[\] : \[\{ index, model \}\]\)\s*\}/)
+  assert.match(source, /extraFields\?: Record<string, unknown>/)
+  assert.match(source, /extraFields: extraModelFields\(raw\)/)
+  assert.match(source, /\.\.\.extraModelFields\(model\.extraFields\)/)
+  assert.match(source, /this\.draft\.models = mergeModels\(this\.draft\.models, found\)/)
+  assert.doesNotMatch(source, /gemini-3\.1-flash-lite.*isImageOnlyModel|gpt-image-2-mini.*isImageOnlyModel/)
+})
+
 test('initial profile waits until the host writes complete model capabilities', async () => {
   let definition
   globalThis.window = {
