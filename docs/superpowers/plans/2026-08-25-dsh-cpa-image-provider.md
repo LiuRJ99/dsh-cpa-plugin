@@ -351,7 +351,7 @@ export function isImageOnlyModel(value) {
 - Modify: `package.json`（公共 service subpath 已在 Task 2 加入；此处完成版本号）
 - Modify: `CHANGELOG.md`（仅记录公开服务、引擎映射和 selector policy）
 
-- [ ] **Step 1: 做最终静态和单元验证。**
+- [x] **Step 1: 做最终静态和单元验证。**
 
   按顺序运行：
 
@@ -365,19 +365,19 @@ export function isImageOnlyModel(value) {
 
   `npm pack --dry-run` 必须包含 `src/image-generation.ts`、`lib/image-generation.js` 和 `lib/index.js`，不得包含本地响应、图片或 secret-like fixture。`npm run check` 的声明范围只覆盖本 worktree 的 Node syntax、bundle 和测试，不外推为生产正确性。
 
-- [ ] **Step 2: 增加发布前 import 和 contract 检查。**
+- [x] **Step 2: 增加发布前 import 和 contract 检查。**
 
   使用构建产物验证 `./image-generation` 能被 ESM 导入，检查 `IMAGE_GENERATION_SERVICE` 值为 `dshCpaImageGeneration`，并检查 `ImageEngine` 的运行时调用只接受 `gpt`/`gemini`。确认 `lib/index.js` 中没有第二个独立的图片请求实现。
 
-- [ ] **Step 3: 执行本地 CPA Host smoke。**
+- [x] **Step 3: 执行本地 CPA Host smoke。**（已尝试；当前终端 credential-missing，GPT/Gemini 真实响应未验证。）
 
   使用本机已经配置的 CPA model route 和 credential，各执行一次 Host service 调用：GPT 只验证 `/v1/images/generations`、`gpt-image-2`、非空图片 bytes 与标准 media type；Gemini 只验证 `/v1/chat/completions`、`gemini-3.1-flash-image`、`message.images` JPEG data URL 解码和非空 bytes。终端输出只记录 engine、path、status、media type 和 byte count，不记录 key、Authorization、完整响应或图片内容。若本地 relay 不可用，记录具体命令和失败范围，不把本地不可用描述为代码通过。
 
-- [ ] **Step 4: 更新版本和变更记录。**
+- [x] **Step 4: 更新版本和变更记录。**
 
   将 `package.json` 版本从 `0.2.0` 提升到下一个 minor 版本 `0.3.0`，在 `CHANGELOG.md` 记录：`dshCpaImageGeneration`、`./image-generation`、GPT/Gemini 两条 CPA 路径、显式 image-only 过滤和旧 stream 拦截移除。变更记录不包含本地 endpoint、模型 key 或 response capture。
 
-- [ ] **Step 5: 重新运行交付验证并提交。**
+- [x] **Step 5: 重新运行交付验证并提交。**（release commit `536cf4b`。）
 
   ```bash
   npm run bundle

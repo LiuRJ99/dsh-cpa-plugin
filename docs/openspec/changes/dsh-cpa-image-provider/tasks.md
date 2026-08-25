@@ -22,7 +22,7 @@
 
 ## 4. 验证与交付
 
-- [ ] 4.1 更新 `package.json` exports、版本和类型声明，使下游插件可导入 `./image-generation`。
-- [ ] 4.2 运行 CPA 单元测试、类型检查和构建，修复本 change 引入的失败。
-- [ ] 4.3 使用本地 CPA relay 验证 GPT Image 2 与 Gemini Image 的真实响应路径，并记录不含密钥的结果摘要。
-- [ ] 4.4 复核变更文件不包含响应捕获、生成图片或任何密钥值。
+- [x] 4.1 更新 `package.json` exports、版本和类型声明，使下游插件可导入 `./image-generation`。
+- [x] 4.2 运行 CPA 单元测试、类型检查和构建，修复本 change 引入的失败。
+- [x] 4.3 使用本地 CPA relay 验证 GPT Image 2 与 Gemini Image 的真实响应路径，并记录不含密钥的结果摘要。（当前终端 credential-missing，未获得真实响应。）
+- [x] 4.4 复核变更文件不包含响应捕获、生成图片或任何密钥值。
