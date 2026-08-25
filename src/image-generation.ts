@@ -287,13 +287,13 @@ function parseGeminiImage(body: unknown): CpaGeneratedImage {
   }
   const mediaType = normalizeMediaType(match[1])
   return {
-    data: decodeBase64(match[2]),
+    data: decodeBase64(match[2]!),
     mediaType,
   }
 }
 
 function normalizeMediaType(value: string | null | undefined): CpaGeneratedImage['mediaType'] {
-  const mediaType = String(value ?? '').split(';', 1)[0].trim().toLowerCase()
+  const mediaType = String(value ?? '').split(';', 1)[0]!.trim().toLowerCase()
   if (
     mediaType === 'image/png'
     || mediaType === 'image/jpeg'
