@@ -49,7 +49,7 @@ export function createCpaImageGenerationService(
   const fetchImpl = deps.fetchImpl ?? globalThis.fetch
   return {
     async generate(request) {
-      if (request.signal.aborted) throw request.signal.reason
+      if (request.signal.aborted) throw abortError()
       const prompt = request.prompt.trim()
       if (prompt === '') throw new LlmError('CPA image generation prompt must not be empty', 'INVALID_REQUEST')
       if (request.engine !== 'gpt' && request.engine !== 'gemini') {
@@ -150,7 +150,8 @@ async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestIn
     response = await fetchImpl(url, init)
   } catch (error) {
     if (error instanceof LlmError) throw error
-    throw new LlmError(`CPA image generation request failed: ${error instanceof Error ? error.message : String(error)}`, 'TRANSPORT')
+    if (init.signal?.aborted) throw abortError()
+    throw new LlmError('CPA image generation request failed', 'TRANSPORT')
   }
 
   if (!response.ok) {
@@ -217,18 +218,33 @@ async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: Abo
     }
   }
   if (typeof item?.url === 'string' && item.url !== '') {
-    const response = await fetchImpl(item.url, { method: 'GET', signal })
+    let response: Response
+    try {
+      response = await fetchImpl(item.url, { method: 'GET', signal })
+    } catch (error) {
+      if (error instanceof LlmError) throw error
+      if (signal.aborted) throw abortError()
+      throw new LlmError('CPA image generation request failed', 'TRANSPORT')
+    }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {})
       throw new LlmError(`CPA image generation image download answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
     }
     const mediaType = normalizeMediaType(response.headers.get('content-type'))
+    const data = await readBoundedBytes(response)
+    if (data.byteLength === 0) {
+      throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+    }
     return {
-      data: await readBoundedBytes(response),
+      data,
       mediaType,
     }
   }
   throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+}
+
+function abortError(): LlmError {
+  return new LlmError('CPA image generation request aborted', 'ABORTED')
 }
 
 function parseGeminiImage(body: unknown): CpaGeneratedImage {

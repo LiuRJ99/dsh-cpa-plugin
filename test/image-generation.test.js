@@ -217,6 +217,28 @@ test('maps non-2xx responses to safe upstream HTTP errors', async () => {
   )
 })
 
+test('maps transport failures to a safe error without leaking endpoint details', async () => {
+  const { service } = createHarness({
+    fetchImpl: async () => {
+      throw new Error('connect ECONNREFUSED http://cpa.example/v1/images/generations')
+    },
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gpt',
+      prompt: 'x',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'TRANSPORT')
+      assert.equal(error.message, 'CPA image generation request failed')
+      assert.doesNotMatch(String(error.message), /cpa\.example|ECONNREFUSED|images\/generations/u)
+      return true
+    },
+  )
+})
+
 test('rejects unknown media types from Gemini data URLs', async () => {
   const { service } = createHarness({
     fetchImpl: async () => new Response(JSON.stringify({
@@ -264,7 +286,7 @@ test('rejects empty CPA credentials before sending the request', async () => {
 
 test('honors already-aborted signals', async () => {
   const controller = new AbortController()
-  controller.abort(new Error('stop'))
+  controller.abort(new Error('custom abort reason with endpoint http://cpa.example/v1'))
   const { calls, service } = createHarness()
 
   await assert.rejects(
@@ -274,9 +296,40 @@ test('honors already-aborted signals', async () => {
       signal: controller.signal,
     }),
     (error) => {
-      assert.equal(error, controller.signal.reason)
+      assertLlmError(error, 'ABORTED')
+      assert.equal(error.message, 'CPA image generation request aborted')
+      assert.notEqual(error, controller.signal.reason)
+      assert.doesNotMatch(String(error.message), /custom abort reason|cpa\.example/u)
       return true
     },
   )
   assert.equal(calls.length, 0)
+})
+
+test('rejects zero-byte GPT url downloads', async () => {
+  const { service } = createHarness({
+    fetchImpl: async (url) => {
+      if (String(url).endsWith('/images/generations')) {
+        return new Response(JSON.stringify({
+          data: [{ url: 'https://cdn.example/empty.png' }],
+        }), { status: 200 })
+      }
+      return new Response(new Uint8Array(0), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })
+    },
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gpt',
+      prompt: 'x',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'EMPTY_RESPONSE')
+      return true
+    },
+  )
 })
