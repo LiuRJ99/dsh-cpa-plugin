@@ -8,6 +8,10 @@
     ".": "./src/index.js",
     "./client": "./lib/composed-client.js",
     "./catalog": "./src/catalog.js",
+    "./image-generation": {
+      "types": "./src/image-generation.ts",
+      "import": "./lib/image-generation.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },

@@ -13,6 +13,11 @@ import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { RpcResult } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
+import {
+  createCpaImageGenerationService,
+  IMAGE_GENERATION_SERVICE,
+  type CpaImageGenerationService,
+} from './image-generation.ts'
 import { discoverCpaModels } from './model-discovery.ts'
 import { MODEL_CAPABILITY_SERVICE, PRIORITY_SERVICE_TIER, type ModelCapabilityProvider } from './model-capabilities.ts'
 import { MODEL_EXECUTION_SERVICE, type ModelExecutionProvider } from './model-execution.ts'
@@ -112,6 +117,17 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
       }
     }
   })
+  const imageService = createCpaImageGenerationService(
+    (_engine) => {
+      const route = cpaFastRoute(ctx, effectiveConfig(ctx, config))
+      return route === undefined ? undefined : {
+        baseURL: route.baseURL,
+        apiKeyEnv: route.apiKeyEnv,
+      }
+    },
+    readCredential,
+  )
+  ctx.provide(IMAGE_GENERATION_SERVICE, imageService satisfies CpaImageGenerationService)
 
   const capabilityCacheKeyOf = (currentConfig: Config): string => `${currentConfig.endpoint}\u0000${currentConfig.providerId}`
   const applyCapabilities = (value: CpaModelCapabilitiesView, key: string): CpaModelCapabilitiesView => {

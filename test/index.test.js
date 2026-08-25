@@ -16,6 +16,7 @@ import {
   PROFILE_SYNC_HEADER,
   apply,
 } from '../src/index.js'
+import { IMAGE_GENERATION_SERVICE } from '../lib/image-generation.js'
 
 async function resolvedConfig(overrides = {}) {
   const result = await Config['~standard'].validate(overrides)
@@ -40,14 +41,59 @@ function managedProfile(overrides = {}) {
 function createContext(initialSection, initialCredential) {
   let section = initialSection
   let credential = initialCredential
+  const registeredSections = new Map()
   const discoveries = new Map()
   const listeners = new Map()
   const mutations = []
   const warnings = []
   const effects = []
   const timeouts = []
+  const provided = new Map()
+
+  const settingsService = {
+    get(ns) {
+      return ns === undefined ? section : registeredSections.get(String(ns)) ?? section
+    },
+    async mutate(_ns, ops) {
+      mutations.push(ops)
+      const providers = { ...(section.providers || {}) }
+      for (const op of ops) {
+        assert.equal(op.path[0], 'providers')
+        if (op.op === 'set') providers[op.path[1]] = op.value
+        else delete providers[op.path[1]]
+      }
+      section = { ...section, providers }
+    },
+    register(ns, _schema, options = {}) {
+      const key = String(ns)
+      if (!registeredSections.has(key)) registeredSections.set(key, options.base)
+      return {
+        get() {
+          return registeredSections.get(key)
+        },
+        watch() {
+          return () => {}
+        },
+      }
+    },
+  }
+
+  const credentialsService = {
+    async resolve() {
+      return credential === undefined ? undefined : { value: credential }
+    },
+  }
+
+  const connectionService = {
+    rpc: {
+      handle() {
+        return () => {}
+      },
+    },
+  }
 
   const ctx = {
+    fiber: { state: 'running' },
     llm: {
       registerModelDiscovery(ns, handler) {
         discoveries.set(String(ns), handler)
@@ -57,25 +103,28 @@ function createContext(initialSection, initialCredential) {
         throw new Error('the plugin must not own the configurable-provider directory')
       },
     },
-    settings: {
-      get() {
-        return section
-      },
-      async mutate(_ns, ops) {
-        mutations.push(ops)
-        const providers = { ...(section.providers || {}) }
-        for (const op of ops) {
-          assert.equal(op.path[0], 'providers')
-          if (op.op === 'set') providers[op.path[1]] = op.value
-          else delete providers[op.path[1]]
-        }
-        section = { ...section, providers }
-      },
+    settings: settingsService,
+    credentials: credentialsService,
+    provide(name, value) {
+      provided.set(String(name), value)
+      return value
     },
-    credentials: {
-      async resolve() {
-        return credential === undefined ? undefined : { value: credential }
-      },
+    get(name) {
+      if (name === 'settings') return settingsService
+      if (name === 'credentials') return credentialsService
+      if (name === 'connection') return connectionService
+      return provided.get(String(name))
+    },
+    inject(_deps, callback) {
+      callback({
+        credentials: credentialsService,
+        connection: connectionService,
+        settings: settingsService,
+        effect: ctx.effect.bind(ctx),
+        get(name) {
+          return ctx.get(name)
+        },
+      })
     },
     on(event, listener) {
       const rows = listeners.get(event) || []
@@ -107,6 +156,7 @@ function createContext(initialSection, initialCredential) {
     mutations,
     warnings,
     timeouts,
+    get provided() { return provided },
     get section() { return section },
     setSection(value) { section = value },
     setCredential(value) { credential = value },
@@ -174,6 +224,14 @@ test('initial discovery requests the fixed rich catalog and returns full capabil
   } finally {
     globalThis.fetch = previousFetch
   }
+})
+
+test('provider composition still exposes the Host image service through lib/index.js seams', async () => {
+  const harness = createContext({ providers: {} }, 'initial-secret')
+  apply(harness.ctx, await resolvedConfig())
+  assert.equal(typeof harness.provided.get(IMAGE_GENERATION_SERVICE)?.generate, 'function')
+  assert.deepEqual([...harness.discoveries.keys()], ['llm-cliproxyapi'])
+  harness.dispose()
 })
 
 test('model discovery preserves manual capacities already stored for the provider', async () => {
