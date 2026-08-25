@@ -18,7 +18,7 @@ window.__ModuleLoader__.load({
     const CREDENTIAL_REF = 'DSH_CLIPROXY_API_KEY'
     const MANAGEMENT_CREDENTIAL_REF = 'CPA_MANAGEMENT_KEY'
     const PROVIDER = 'CLIProxyAPI'
-    const DEFAULT_BASE_URL = 'http://127.0.0.1:8317/v1'
+    const DEFAULT_BASE_URL = 'http://localhost:8317/v1'
     const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
     const PROFILE_SYNC_TIMEOUT_MS = 30000
     const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'

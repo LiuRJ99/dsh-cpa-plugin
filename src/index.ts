@@ -23,7 +23,7 @@ import {
 import { discoverCpaModels } from './model-discovery.ts'
 import { MODEL_CAPABILITY_SERVICE, PRIORITY_SERVICE_TIER, type ModelCapabilityProvider } from './model-capabilities.ts'
 import { MODEL_EXECUTION_SERVICE, type ModelExecutionProvider } from './model-execution.ts'
-import type { CpaAccount, CpaAccountModelsRequest, CpaAccountModelsView, CpaAccountSelection, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaModelInputCapability, CpaQuota, CpaRpcValue, CpaSpeed, CpaSpeedSelection } from './protocol.ts'
+import type { CpaAccount, CpaAccountModelsRequest, CpaAccountModelsView, CpaAccountSelection, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaModelInputCapability, CpaQuota, CpaQuotaWindow, CpaRpcValue, CpaSpeed, CpaSpeedSelection } from './protocol.ts'
 
 export const name = 'dsh-cpa-plugin'
 
@@ -43,7 +43,7 @@ const RefreshSettings: z<RefreshSettings> = z.object({
 })
 
 export interface Config {
-  /** CPA base URL, normally http://127.0.0.1:8317. */
+  /** CPA base URL, normally http://localhost:8317. */
   endpoint: string
   /** Model-provider group id used for the unified account/model refresh. */
   providerId: string
@@ -61,7 +61,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  endpoint: z.string().default('http://127.0.0.1:8317'),
+  endpoint: z.string().default('http://localhost:8317'),
   providerId: z.string().default('cpa'),
   managementKeyEnv: z.string().default('CPA_MANAGEMENT_KEY'),
   timeoutMs: z.natural().min(1000).default(8000),
@@ -744,54 +744,82 @@ async function callUpstream(
   }
 }
 
-function parseCodexQuota(body: unknown): AccountQuotaResult {
+export function parseCodexQuota(body: unknown): AccountQuotaResult {
   const root = valueObject(body)
   if (root === undefined) return {}
-  const rateLimit = valueObject(root.rate_limit) ?? valueObject(root.rateLimit)
-  const primary = valueObject(rateLimit?.primary_window) ?? valueObject(rateLimit?.primaryWindow)
-  const secondary = valueObject(rateLimit?.secondary_window) ?? valueObject(rateLimit?.secondaryWindow)
-  // CPA has returned the active Codex window in primary_window, but older
-  // versions can put the usable window in secondary_window. Prefer primary
-  // while retaining the fallback so a provider response cannot blank quota.
-  const activeWindow = primary ?? secondary
+  const rateLimit = valueObject(root.rate_limit) ?? valueObject(root.rateLimit) ?? {}
+  const primary = valueObject(rateLimit.primary_window)
+    ?? valueObject(rateLimit.primaryWindow)
+    ?? valueObject(root.primary_window)
+    ?? valueObject(root.primaryWindow)
+  const secondary = valueObject(rateLimit.secondary_window)
+    ?? valueObject(rateLimit.secondaryWindow)
+    ?? valueObject(root.secondary_window)
+    ?? valueObject(root.secondaryWindow)
   const credits = valueObject(root.credits)
   const spendControl = valueObject(root.spend_control) ?? valueObject(root.spendControl)
-  const used = firstNumber(activeWindow?.used_percent, activeWindow?.usedPercent, root.used_percent, root.usedPercent)
-  const remaining = used === undefined ? undefined : Math.max(0, 100 - used)
-  const limitReached = booleanValue(rateLimit?.limit_reached) === true
-    || booleanValue(rateLimit?.limitReached) === true
+  const limitReached = booleanValue(rateLimit.limit_reached) === true
+    || booleanValue(rateLimit.limitReached) === true
+    || booleanValue(root.rate_limit_reached) === true
+    || booleanValue(root.rateLimitReached) === true
+
+  // Codex exposes independent rolling windows. `primary_window` is normally
+  // the five-hour limit and `secondary_window` is normally the weekly limit,
+  // but use the explicit window size when present so either order remains
+  // correct across CPA/ChatGPT response versions.
+  const parsedWindows = [
+    parseCodexQuotaWindow(primary, 'five_hour'),
+    parseCodexQuotaWindow(secondary, 'weekly'),
+  ].filter((window): window is CpaQuotaWindow => window !== undefined)
+  if (Array.isArray(rateLimit.windows)) {
+    for (const [index, value] of rateLimit.windows.entries()) {
+      const fallback = index === 0 ? 'five_hour' : index === 1 ? 'weekly' : 'quota'
+      const window = parseCodexQuotaWindow(valueObject(value), fallback)
+      if (window !== undefined) parsedWindows.push(window)
+    }
+  }
+  const windows = deduplicateCodexQuotaWindows(parsedWindows)
+  const activeWindow = primary ?? secondary
+  const fallbackUsed = firstNumber(root.used_percent, root.usedPercent)
+  const fallbackRemaining = percentRemaining(fallbackUsed)
+  if (windows.length === 0 && fallbackRemaining !== undefined) {
+    windows.push({
+      window: 'quota',
+      remaining: fallbackRemaining,
+      total: 100,
+      unit: '%',
+      exceeded: limitReached || fallbackRemaining <= 0,
+    })
+  }
+
   const balance = firstNumber(credits?.balance)
-  const exceeded = limitReached
+  const quotaExceeded = limitReached
     || booleanValue(credits?.overage_limit_reached) === true
+    || booleanValue(credits?.overageLimitReached) === true
     || booleanValue(spendControl?.reached) === true
-    || (remaining !== undefined && remaining <= 0)
-    || (remaining === undefined && balance !== undefined && balance <= 0)
+    || windows.some(window => window.exceeded === true || window.remaining <= 0)
+  // Keep the legacy top-level fields focused on the primary/five-hour window;
+  // consumers that understand multiple windows should use `quota.windows`.
+  const primaryQuotaWindow = windows.find(window => window.window === 'five_hour') ?? windows[0]
+  const remaining = primaryQuotaWindow?.remaining
   const resetAfterSeconds = firstNumber(activeWindow?.reset_after_seconds, activeWindow?.resetAfterSeconds)
   const resetAt = epochToIso(activeWindow?.reset_at ?? activeWindow?.resetAt)
   const windowSeconds = firstNumber(activeWindow?.limit_window_seconds, activeWindow?.limitWindowSeconds)
-  const window = codexWindowKey(windowSeconds)
-  const quota = used !== undefined && remaining !== undefined
+  const quota = remaining !== undefined
     ? {
       remaining,
       total: 100,
-      used,
+      used: 100 - remaining,
       unit: '%',
-      exceeded,
-      window,
-      windows: [{
-        window,
-        remaining,
-        total: 100,
-        unit: '%',
-        exceeded,
-        ...resetAt === undefined ? {} : { resetAt },
-      }],
+      exceeded: quotaExceeded,
+      window: primaryQuotaWindow?.window ?? 'quota',
+      windows,
       ...resetAt === undefined ? {} : { resetAt },
       ...resetAfterSeconds === undefined ? {} : { resetAfterSeconds },
       ...windowSeconds === undefined ? {} : { windowSeconds },
     }
     : balance !== undefined
-      ? { remaining: Math.max(0, balance), unit: 'credits', exceeded }
+      ? { remaining: Math.max(0, balance), unit: 'credits', exceeded: quotaExceeded || balance <= 0 }
       : undefined
   return {
     ...stringValue(root.plan_type) === undefined && stringValue(root.planType) === undefined
@@ -801,12 +829,67 @@ function parseCodexQuota(body: unknown): AccountQuotaResult {
   }
 }
 
-function codexWindowKey(seconds: number | undefined): string {
-  if (seconds === undefined) return 'quota'
-  if (Math.abs(seconds - 18_000) <= 60) return 'five_hour'
-  if (Math.abs(seconds - 604_800) <= 60) return 'weekly'
-  if (seconds >= 2_419_200) return 'monthly'
-  return `window_${seconds}`
+function parseCodexQuotaWindow(
+  value: Record<string, unknown> | undefined,
+  fallbackWindow: string,
+): CpaQuotaWindow | undefined {
+  if (value === undefined) return undefined
+  const used = firstNumber(value.used_percent, value.usedPercent)
+  const reportedRemaining = firstNumber(value.remaining_percent, value.remainingPercent)
+  const remaining = reportedRemaining === undefined ? percentRemaining(used) : clampPercent(reportedRemaining)
+  if (remaining === undefined) return undefined
+  const windowSeconds = firstNumber(value.limit_window_seconds, value.limitWindowSeconds)
+  const windowLabel = stringValue(value.window) ?? stringValue(value.name) ?? stringValue(value.label)
+  const window = codexWindowKey(windowSeconds, fallbackWindow, windowLabel)
+  const resetAt = epochToIso(value.reset_at ?? value.resetAt)
+  const exceeded = booleanValue(value.limit_reached) === true
+    || booleanValue(value.limitReached) === true
+    || booleanValue(value.exceeded) === true
+    || remaining <= 0
+  return {
+    window,
+    remaining,
+    total: 100,
+    unit: '%',
+    exceeded,
+    ...resetAt === undefined ? {} : { resetAt },
+  }
+}
+
+function deduplicateCodexQuotaWindows(windows: CpaQuotaWindow[]): CpaQuotaWindow[] {
+  const byWindow = new Map<string, CpaQuotaWindow>()
+  for (const window of windows) {
+    const current = byWindow.get(window.window)
+    if (current === undefined || window.remaining < current.remaining) byWindow.set(window.window, window)
+  }
+  return [...byWindow.values()].sort((left, right) => codexWindowOrder(left.window) - codexWindowOrder(right.window))
+}
+
+function codexWindowOrder(window: string): number {
+  if (window === 'five_hour') return 0
+  if (window === 'weekly') return 1
+  return 2
+}
+
+function percentRemaining(used: number | undefined): number | undefined {
+  return used === undefined ? undefined : clampPercent(100 - clampPercent(used))
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value))
+}
+
+function codexWindowKey(seconds: number | undefined, fallback = 'quota', label?: string): string {
+  if (seconds !== undefined) {
+    if (Math.abs(seconds - 18_000) <= 60) return 'five_hour'
+    if (Math.abs(seconds - 604_800) <= 60) return 'weekly'
+    if (seconds >= 2_419_200) return 'monthly'
+    return `window_${seconds}`
+  }
+  const normalized = label?.trim().toLowerCase().replace(/[-\s]+/g, '_')
+  if (normalized === '5h' || normalized?.includes('five_hour') || normalized?.includes('5_hour')) return 'five_hour'
+  if (normalized === 'week' || normalized?.includes('week')) return 'weekly'
+  return fallback
 }
 
 function parseAntigravityQuota(body: unknown, subscriptionBody: unknown): AccountQuotaResult {

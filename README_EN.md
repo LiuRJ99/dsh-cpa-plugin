@@ -31,7 +31,7 @@ dsh plugin --profile web update
 After opening Harness:
 
 1. Go to **Settings → Plugins → CLIProxyAPI**.
-2. Enter the CLIProxyAPI **model API URL**, for example `http://127.0.0.1:8317/v1`.
+2. Enter the CLIProxyAPI **model API URL**, for example `http://localhost:8317/v1`.
 3. Enter the model **API key**. Leave it empty if the service does not require authentication.
 4. To display account status and quota, enter the CLIProxyAPI **Management Key** from `remote-management.secret-key`.
 5. Choose the unified refresh interval: **manual, 5 minutes, 30 minutes, 1 hour, 3 hours, or 5 hours**. The default is 5 minutes.
@@ -45,7 +45,7 @@ This project keeps only the following additions on top of the official CLIProxyA
 
 ### 1. Account quota display
 
-- Shows account status, plan, account identity, and quota windows in Settings.
+- Shows account status, plan, account identity, and quota windows in Settings; Codex five-hour and weekly windows are shown separately when both are returned.
 - Shows the current account and quota in the message composer.
 - Clicking the account status strip lists and switches to other accounts that support the current model.
 - Uses status colors and quota progress bars for available, quota-low, and unavailable accounts.

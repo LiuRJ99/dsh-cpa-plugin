@@ -286,7 +286,7 @@ export function apply(ctx, config) {
   // Cordis' extension seam, so keep the original host path usable without it.
   const cpaAddon = typeof ctx.inject === 'function'
     ? applyCpaAddon(ctx, {
-      endpoint: 'http://127.0.0.1:8317',
+      endpoint: 'http://localhost:8317',
       // The upstream model provider itself remains owned by the original
       // CLIProxyAPI profile above; the add-on contributes account/quota data.
       providerId: 'cpa',

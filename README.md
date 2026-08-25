@@ -31,7 +31,7 @@ dsh plugin --profile web update
 打开 Harness 后：
 
 1. 进入 **设置 → 插件 → CLIProxyAPI**。
-2. 填写 CLIProxyAPI 的**模型 API 地址**，例如 `http://127.0.0.1:8317/v1`。
+2. 填写 CLIProxyAPI 的**模型 API 地址**，例如 `http://localhost:8317/v1`。
 3. 填写模型调用 **API Key**；无鉴权服务可以留空。
 4. 如需账号状态和额度，填写 CLIProxyAPI 的 **Management Key**，对应 `remote-management.secret-key`。
 5. 选择统一刷新频率：**手动、5 分钟、30 分钟、1 小时、3 小时或 5 小时**。默认是 5 分钟。
@@ -45,7 +45,7 @@ dsh plugin --profile web update
 
 ### 1. 账号额度显示
 
-- 在设置页显示账号状态、套餐、账号身份和额度窗口。
+- 在设置页显示账号状态、套餐、账号身份和额度窗口；Codex 同时存在 5 小时和周额度时分别显示两个窗口。
 - 在消息输入栏显示当前模型对应的账号和额度。
 - 点击账号状态条可以查看并切换到其他支持当前模型的账号。
 - 使用绿色、黄色、红色状态和额度进度条展示可用、额度偏低和不可用状态。

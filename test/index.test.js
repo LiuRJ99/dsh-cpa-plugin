@@ -18,6 +18,7 @@ import {
   apply,
 } from '../src/index.js'
 import { IMAGE_GENERATION_SERVICE } from '../lib/image-generation.js'
+import { parseCodexQuota } from '../lib/index.js'
 
 async function resolvedConfig(overrides = {}) {
   const result = await Config['~standard'].validate(overrides)
@@ -196,6 +197,49 @@ test('bundled Host artifact keeps the CPA image service but not the OpenAI Image
 
   assert.match(imageServiceBundle, /new URL\("images\/generations"/u)
   assert.match(imageServiceBundle, /gpt-image-2/u)
+})
+
+test('parses Codex five-hour and weekly quota windows together', () => {
+  const result = parseCodexQuota({
+    plan_type: 'pro',
+    rate_limit: {
+      primary_window: {
+        used_percent: 12,
+        limit_window_seconds: 18000,
+        reset_at: 1_800_000_000,
+      },
+      secondary_window: {
+        used_percent: 42,
+        limit_window_seconds: 604800,
+        reset_after_seconds: 432000,
+      },
+    },
+  })
+
+  assert.equal(result.plan, 'pro')
+  assert.equal(result.quota?.remaining, 88)
+  assert.equal(result.quota?.used, 12)
+  assert.equal(result.quota?.window, 'five_hour')
+  assert.deepEqual(result.quota?.windows?.map(({ window, remaining, resetAt }) => ({ window, remaining, resetAt })), [
+    { window: 'five_hour', remaining: 88, resetAt: '2027-01-15T08:00:00.000Z' },
+    { window: 'weekly', remaining: 58, resetAt: undefined },
+  ])
+  assert.equal(result.quota?.resetAfterSeconds, undefined)
+  assert.equal(result.quota?.windowSeconds, 18000)
+})
+
+test('uses primary and secondary order when Codex omits window sizes', () => {
+  const result = parseCodexQuota({
+    rateLimit: {
+      primaryWindow: { usedPercent: 5 },
+      secondaryWindow: { usedPercent: 25 },
+    },
+  })
+
+  assert.deepEqual(result.quota?.windows?.map(({ window, remaining }) => ({ window, remaining })), [
+    { window: 'five_hour', remaining: 95 },
+    { window: 'weekly', remaining: 75 },
+  ])
 })
 
 test('registers rich discovery without competing for the provider directory', async () => {
