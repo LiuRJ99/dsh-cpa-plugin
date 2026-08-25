@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-08-25
+
+### Features
+
+- **Codex dual quota windows (Codex 双额度窗口)**: `parseCodexQuota` now parses the five-hour and weekly Codex quota windows together instead of picking a single window, so the settings page and composer indicator can show both windows separately when CPA returns both. Window order stays correct across CPA/ChatGPT response versions via explicit window sizes when present (`limit_window_seconds`), falling back to the primary/secondary field order.
+
+### Fixes & Improvements
+
+- Default CPA endpoint switched from `http://127.0.0.1:8317` to `http://localhost:8317` (config default, addon fallback and web client base URL), matching the updated README guidance.
+- Exported `parseCodexQuota` from `lib/index.js` so downstream consumers can reuse the quota parsing logic; covered by two new unit tests.
+
 ## [0.3.0] - 2026-08-25
 
 ### Features

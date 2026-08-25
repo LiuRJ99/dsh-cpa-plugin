@@ -1,6 +1,6 @@
 {
   "name": "@LiuRJ99/dsh-cpa-plugin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "GUI-configurable CLIProxyAPI Responses provider for DeepSeek Harness with account, quota and speed extensions.",
   "type": "module",
   "main": "./src/index.js",
