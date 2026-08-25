@@ -18,7 +18,10 @@ const clientExternals = [
 
 const host = {
   name: 'dsh-cpa-plugin/addon',
-  entry: { index: resolve(here, 'src/index.ts') },
+  entry: {
+    index: resolve(here, 'src/index.ts'),
+    'image-generation': resolve(here, 'src/image-generation.ts'),
+  },
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
