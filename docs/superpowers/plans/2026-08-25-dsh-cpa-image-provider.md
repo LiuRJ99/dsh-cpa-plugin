@@ -61,7 +61,7 @@ export interface CpaImageGenerationService {
 
 `createCpaImageGenerationService` 作为 `@internal` Host composition seam，由 add-on 注册代码和单元测试使用；下游只导入上面的服务名、engine 类型、请求类型和结果类型。
 
-- [ ] **Step 1: 建立失败测试和 fake HTTP 工具。**
+- [x] **Step 1: 建立失败测试和 fake HTTP 工具。**
 
   在 `test/image-generation.test.js` 中从 `../lib/image-generation.js` 导入测试 seam，使用 `new Response()` 构造 JSON 响应，记录每次 fake fetch 的 URL、请求头和 body。先覆盖下列行为：
 
@@ -97,7 +97,7 @@ export interface CpaImageGenerationService {
 
   同时添加 GPT `data[].url` 兼容响应、空 prompt、成功但无图片、非法 JSON、非 2xx、未知媒体类型、空凭据和 abort 测试。错误断言只检查安全错误分类和状态，不依赖完整上游 body。
 
-- [ ] **Step 2: 运行红灯检查。**
+- [x] **Step 2: 运行红灯检查。**（`tdd_mode: direct` 下以串行 bundle + 定向测试作为验证。）
 
   先运行：
 
@@ -108,7 +108,7 @@ export interface CpaImageGenerationService {
 
   预期在服务模块和独立 entry 尚未实现时失败；记录失败点后继续实现，不修改测试来绕过失败。
 
-- [ ] **Step 3: 添加服务类型、路由 seam 和显式引擎映射。**
+- [x] **Step 3: 添加服务类型、路由 seam 和显式引擎映射。**
 
   在 `src/image-generation.ts` 中实现 `createCpaImageGenerationService(resolveRoute, readCredential, deps)`，内部只接受包含 `baseURL`、`apiKeyEnv` 的 Host route。使用固定映射：
 
@@ -121,13 +121,13 @@ export interface CpaImageGenerationService {
 
   GPT 请求 body 为 `model`、`prompt`、`n: 1`、`output_format: 'png'`、`size`、`quality: 'auto'`，默认 `size` 为 `1024x1024`，`size` 优先于 `imageSize`。未提供可验证映射的 `aspectRatio` 以 `UNSUPPORTED_OPTION` 拒绝。Gemini 只发送 `model`、`messages: [{ role: 'user', content: prompt }]`、`stream: false`；Gemini 的尺寸扩展字段在当前 MVP 中以 `UNSUPPORTED_OPTION` 拒绝，不向 CPA 发明私有字段。
 
-- [ ] **Step 4: 实现安全的响应读取和解析。**
+- [x] **Step 4: 实现安全的响应读取和解析。**
 
   复用 CPA catalog 的 reader 思路，新增有界 byte reader：在累计字节超过固定响应上限时取消 reader 并抛出 `RESPONSE_TOO_LARGE`；图片 URL 下载也使用相同的 byte 上限。JSON 解析失败抛出 `INVALID_RESPONSE`，非 2xx 抛出只包含协议和 HTTP status 的 `UPSTREAM_HTTP_ERROR`。
 
   GPT 解析优先读取 `data[0].b64_json`，没有时读取 `data[0].url` 并下载其 bytes。Gemini 读取 `choices[0].message.images[0].image_url.url`，只接受 `data:image/png|jpeg|webp|gif;base64,...`。Base64 解码失败、媒体类型不支持、成功响应没有图片、下载响应非 2xx 都分别转换为安全的 `LlmError`。使用 `attributionHeaders()`，`Authorization` 只在 Host 发出的 CPA 请求中出现。
 
-- [ ] **Step 5: 配置独立 Host entry 并运行绿灯测试。**
+- [x] **Step 5: 配置独立 Host entry 并运行绿灯测试。**
 
   在 `tsdown.config.mjs` 的 Host entry 中增加 `image-generation: resolve(here, 'src/image-generation.ts')`，保留现有 `index` entry；不要复制第二份协议实现。运行：
 
@@ -138,7 +138,7 @@ export interface CpaImageGenerationService {
 
   预期服务测试全部通过，且 `lib/image-generation.js` 可被 Node ESM 导入。
 
-- [ ] **Step 6: 提交服务核心。**
+- [x] **Step 6: 提交服务核心。**
 
   ```bash
   git add src/image-generation.ts test/image-generation.test.js tsdown.config.mjs
