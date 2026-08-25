@@ -405,8 +405,8 @@ Provider 完成后，将以下信息交给 Adapter worktree：最新 Provider co
 
 ## Self-review Checklist
 
-- [ ] 所有已批准要求都有任务覆盖：engine-only contract、动态 route/key、GPT/Gemini 协议、显式 image-only 过滤、普通 selector 隐藏、旧 stream 移除、`.codex-plugin` 由下游 change 负责、Provider package export 和本地验证。
-- [ ] 每个实现任务都有明确文件、接口、失败测试、实现动作、验证命令和串行提交命令。
-- [ ] 计划没有要求下游读取 CPA key，也没有把 image-only UI 过滤当作 Host 路由依据。
-- [ ] 没有加入自动 fallback、后缀推断、未经 relay 验证的 Gemini 私有字段或未要求的兼容层。
-- [ ] 计划中的每项成功声明都有对应的命令或语义断言，不能用编译成功替代真实 CPA smoke。
+- [x] 所有已批准要求都有任务覆盖：engine-only contract、动态 route/key、GPT/Gemini 协议、显式 image-only 过滤、普通 selector 隐藏、旧 stream 移除、`.codex-plugin` 由下游 change 负责、Provider package export 和本地验证。
+- [x] 每个实现任务都有明确文件、接口、失败测试、实现动作、验证命令和串行提交命令。
+- [x] 计划没有要求下游读取 CPA key，也没有把 image-only UI 过滤当作 Host 路由依据。
+- [x] 没有加入自动 fallback、后缀推断、未经 relay 验证的 Gemini 私有字段或未要求的兼容层。
+- [x] 计划中的每项成功声明都有对应的命令或语义断言，不能用编译成功替代真实 CPA smoke。
