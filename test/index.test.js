@@ -299,6 +299,72 @@ test('ordinary llm/stream text models still fall through to downstream middlewar
   harness.dispose()
 })
 
+test('capability-loaded image-only models do not enter fast stream routing', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), 'http://127.0.0.1:8317/v1/models?client_version=0.144.0')
+    return new Response(JSON.stringify({ models: [
+      {
+        id: 'gpt-image-2',
+        service_tiers: [{ id: 'priority' }],
+      },
+      {
+        id: 'gpt-5.6-sol',
+        service_tiers: [{ id: 'priority' }],
+      },
+    ] }), { status: 200 })
+  }
+  try {
+    const harness = createContext({ providers: {
+      CLIProxyAPI: managedProfile({
+        apiKeyEnv: 'SYNTHETIC_CPA_REF',
+        models: [
+          { id: 'gpt-image-2', name: 'GPT Image 2', imageGeneration: true },
+          { id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol', input: ['text'] },
+        ],
+      }),
+    } }, 'SYNTHETIC_CPA_MARKER')
+    apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI', registerDiscovery: false }))
+
+    const capabilityProvider = harness.provided.get('dshModelCapabilities')
+    const capabilities = await capabilityProvider.listModelCapabilities(new AbortController().signal)
+    assert.deepEqual(capabilities.map(({ model }) => model), ['gpt-image-2', 'gpt-5.6-sol'])
+
+    const sentinel = { ok: true }
+    assert.equal(
+      harness.runMiddleware('llm/stream', {
+        provider: 'CLIProxyAPI',
+        model: 'gpt-image-2',
+        sessionId: 'image-session',
+        serviceTier: 'priority',
+        signal: new AbortController().signal,
+        messages: [createUserMessage({
+          content: [{ type: 'text', text: 'draw a cat' }],
+          source: { kind: 'user' },
+        })],
+      }, sentinel),
+      sentinel,
+    )
+
+    const textStream = harness.runMiddleware('llm/stream', {
+      provider: 'CLIProxyAPI',
+      model: 'gpt-5.6-sol',
+      sessionId: 'text-session',
+      serviceTier: 'priority',
+      signal: new AbortController().signal,
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'hello' }],
+        source: { kind: 'user' },
+      })],
+    }, sentinel)
+    assert.notEqual(textStream, sentinel)
+    assert.equal(typeof textStream?.[Symbol.asyncIterator], 'function')
+    harness.dispose()
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('model discovery preserves manual capacities already stored for the provider', async () => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async () => new Response(JSON.stringify({ models: [{

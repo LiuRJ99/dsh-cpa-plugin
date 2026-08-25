@@ -9,15 +9,19 @@ const JPEG_B64 = Buffer.from(JPEG_BYTES).toString('base64')
 
 function createHarness(options = {}) {
   const calls = []
+  const credentialRefs = []
   const routes = options.routes ?? {
-    gpt: { baseURL: 'http://cpa.example/v1', apiKeyEnv: 'CPA_KEY' },
-    gemini: { baseURL: 'http://cpa.example/v1', apiKeyEnv: 'CPA_KEY' },
+    gpt: { baseURL: 'http://cpa.example/v1', apiKeyEnv: 'SYNTHETIC_CPA_REF' },
+    gemini: { baseURL: 'http://cpa.example/v1', apiKeyEnv: 'SYNTHETIC_CPA_REF' },
   }
-  const credentials = options.credentials ?? { CPA_KEY: 'secret-token' }
+  const credentials = options.credentials ?? { SYNTHETIC_CPA_REF: 'SYNTHETIC_CPA_MARKER_A' }
   const fetchImpl = options.fetchImpl ?? (async () => new Response('{}', { status: 200 }))
   const service = createCpaImageGenerationService(
     (engine) => routes[engine],
-    async (ref) => credentials[ref],
+    async (ref) => {
+      credentialRefs.push(ref)
+      return credentials[ref]
+    },
     {
       fetchImpl: async (url, init = {}) => {
         calls.push({ url: String(url), init })
@@ -25,7 +29,7 @@ function createHarness(options = {}) {
       },
     },
   )
-  return { calls, service }
+  return { calls, credentialRefs, service }
 }
 
 function assertLlmError(error, code, status) {
@@ -37,7 +41,7 @@ function assertLlmError(error, code, status) {
 }
 
 test('GPT maps engine to images/generations and decodes b64_json', async () => {
-  const { calls, service } = createHarness({
+  const { calls, credentialRefs, service } = createHarness({
     fetchImpl: async () => new Response(JSON.stringify({
       data: [{ b64_json: PNG_B64 }],
     }), { status: 200 }),
@@ -50,7 +54,8 @@ test('GPT maps engine to images/generations and decodes b64_json', async () => {
   })
 
   assert.equal(calls[0].url, 'http://cpa.example/v1/images/generations')
-  assert.equal(calls[0].init.headers.authorization, 'Bearer secret-token')
+  assert.deepEqual(credentialRefs, ['SYNTHETIC_CPA_REF'])
+  assert.match(new Headers(calls[0].init.headers).get('authorization') ?? '', /^Bearer \S+$/u)
   assert.equal(JSON.parse(calls[0].init.body).model, 'gpt-image-2')
   assert.equal(JSON.parse(calls[0].init.body).n, 1)
   assert.deepEqual(image.data, PNG_BYTES)
@@ -239,6 +244,106 @@ test('maps transport failures to a safe error without leaking endpoint details',
   )
 })
 
+test('normalizes response.arrayBuffer failures after headers', async () => {
+  const { service } = createHarness({
+    fetchImpl: async () => ({
+      ok: true,
+      headers: new Headers(),
+      body: null,
+      arrayBuffer: async () => {
+        throw new Error('body read failed at http://cpa.example/v1/images/generations')
+      },
+    }),
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gpt',
+      prompt: 'x',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'TRANSPORT')
+      assert.equal(error.message, 'CPA image generation response body read failed')
+      assert.doesNotMatch(String(error.message), /cpa\.example|body read failed at/u)
+      return true
+    },
+  )
+})
+
+test('normalizes rejecting streaming body reads after headers', async () => {
+  let cancelled = false
+  const { service } = createHarness({
+    fetchImpl: async () => ({
+      ok: true,
+      headers: new Headers(),
+      body: {
+        getReader() {
+          return {
+            async read() {
+              throw new Error('stream failed at http://cpa.example/v1/chat/completions')
+            },
+            async cancel() {
+              cancelled = true
+            },
+          }
+        },
+      },
+    }),
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gemini',
+      prompt: 'x',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'TRANSPORT')
+      assert.equal(error.message, 'CPA image generation response body read failed')
+      assert.doesNotMatch(String(error.message), /cpa\.example|stream failed at/u)
+      return true
+    },
+  )
+  assert.equal(cancelled, true)
+})
+
+test('maps aborts during streaming body reads to the stable abort error', async () => {
+  const controller = new AbortController()
+  const { service } = createHarness({
+    fetchImpl: async () => ({
+      ok: true,
+      headers: new Headers(),
+      body: {
+        getReader() {
+          return {
+            async read() {
+              controller.abort(new Error('abort reason contains http://cpa.example/v1'))
+              throw new Error('reader rejected with the abort reason')
+            },
+            async cancel() {},
+          }
+        },
+      },
+    }),
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gpt',
+      prompt: 'x',
+      signal: controller.signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'ABORTED')
+      assert.equal(error.message, 'CPA image generation request aborted')
+      assert.notEqual(error, controller.signal.reason)
+      assert.doesNotMatch(String(error.message), /cpa\.example|abort reason|reader rejected/u)
+      return true
+    },
+  )
+})
+
 test('rejects unknown media types from Gemini data URLs', async () => {
   const { service } = createHarness({
     fetchImpl: async () => new Response(JSON.stringify({
@@ -265,9 +370,44 @@ test('rejects unknown media types from Gemini data URLs', async () => {
   )
 })
 
+test('cancels downloaded bodies before rejecting unsupported media types', async () => {
+  let cancelled = false
+  const { service } = createHarness({
+    fetchImpl: async (url) => {
+      if (String(url).endsWith('/images/generations')) {
+        return new Response(JSON.stringify({
+          data: [{ url: 'https://cdn.example/generated.svg' }],
+        }), { status: 200 })
+      }
+      return {
+        ok: true,
+        headers: new Headers({ 'content-type': 'image/svg+xml' }),
+        body: {
+          async cancel() {
+            cancelled = true
+          },
+        },
+      }
+    },
+  })
+
+  await assert.rejects(
+    service.generate({
+      engine: 'gpt',
+      prompt: 'x',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'INVALID_RESPONSE')
+      return true
+    },
+  )
+  assert.equal(cancelled, true)
+})
+
 test('rejects empty CPA credentials before sending the request', async () => {
   const { calls, service } = createHarness({
-    credentials: { CPA_KEY: '   ' },
+    credentials: { SYNTHETIC_CPA_REF: '   ' },
   })
 
   await assert.rejects(

@@ -11,6 +11,8 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { RpcResult } from '@deepseek-ai/dsh-host-apiproxy/api'
+// @ts-expect-error Runtime JS module is exported without a sibling declaration file.
+import { isImageOnlyModel } from './catalog.js'
 import { streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
 import {
@@ -136,8 +138,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     fastModelIds.clear()
     for (const model of value.models) {
       if (!model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) continue
+      if (isImageOnlyModel(model.id)) continue
       fastModelIds.add(model.id)
-      for (const alias of model.aliases ?? []) fastModelIds.add(alias)
+      for (const alias of model.aliases ?? []) {
+        if (!isImageOnlyModel(alias)) fastModelIds.add(alias)
+      }
     }
     return value
   }

@@ -94,7 +94,7 @@
     "tsdown": "^0.22.0",
     "typescript": "^5.8.0"
   },
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=22.19.0" },
   "license": "MIT",
   "private": true
 }

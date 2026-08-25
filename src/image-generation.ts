@@ -158,11 +158,11 @@ async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestIn
     await response.body?.cancel().catch(() => {})
     throw new LlmError(`CPA image generation upstream answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
   }
-  return readBoundedJson(response)
+  return readBoundedJson(response, init.signal)
 }
 
-async function readBoundedJson(response: Response): Promise<unknown> {
-  const bytes = await readBoundedBytes(response)
+async function readBoundedJson(response: Response, signal: AbortSignal | null | undefined): Promise<unknown> {
+  const bytes = await readBoundedBytes(response, signal)
   try {
     const text = new TextDecoder().decode(bytes)
     return text === '' ? {} : JSON.parse(text)
@@ -171,14 +171,20 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-async function readBoundedBytes(response: Response): Promise<Uint8Array> {
+async function readBoundedBytes(response: Response, signal: AbortSignal | null | undefined): Promise<Uint8Array> {
   const declared = Number(response.headers.get('content-length') ?? Number.NaN)
   if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
     await response.body?.cancel().catch(() => {})
     throw new LlmError('CPA image generation response exceeds 4 MiB', 'RESPONSE_TOO_LARGE')
   }
   if (!response.body) {
-    const buffer = new Uint8Array(await response.arrayBuffer())
+    let arrayBuffer: ArrayBuffer
+    try {
+      arrayBuffer = await response.arrayBuffer()
+    } catch (error) {
+      throw normalizeBodyReadError(error, signal)
+    }
+    const buffer = new Uint8Array(arrayBuffer)
     if (buffer.byteLength > MAX_RESPONSE_BYTES) {
       throw new LlmError('CPA image generation response exceeds 4 MiB', 'RESPONSE_TOO_LARGE')
     }
@@ -189,7 +195,12 @@ async function readBoundedBytes(response: Response): Promise<Uint8Array> {
   let total = 0
   try {
     for (;;) {
-      const part = await reader.read()
+      let part: ReadableStreamReadResult<Uint8Array>
+      try {
+        part = await reader.read()
+      } catch (error) {
+        throw normalizeBodyReadError(error, signal)
+      }
       if (part.done) break
       total += part.value.byteLength
       if (total > MAX_RESPONSE_BYTES) {
@@ -230,8 +241,14 @@ async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: Abo
       await response.body?.cancel().catch(() => {})
       throw new LlmError(`CPA image generation image download answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
     }
-    const mediaType = normalizeMediaType(response.headers.get('content-type'))
-    const data = await readBoundedBytes(response)
+    let mediaType: CpaGeneratedImage['mediaType']
+    try {
+      mediaType = normalizeMediaType(response.headers.get('content-type'))
+    } catch (error) {
+      await response.body?.cancel().catch(() => {})
+      throw error
+    }
+    const data = await readBoundedBytes(response, signal)
     if (data.byteLength === 0) {
       throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
     }
@@ -241,6 +258,13 @@ async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: Abo
     }
   }
   throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+}
+
+function normalizeBodyReadError(error: unknown, signal: AbortSignal | null | undefined): LlmError {
+  if (signal?.aborted === true || (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError')) {
+    return abortError()
+  }
+  return new LlmError('CPA image generation response body read failed', 'TRANSPORT')
 }
 
 function abortError(): LlmError {

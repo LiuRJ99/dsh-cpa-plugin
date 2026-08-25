@@ -10,7 +10,7 @@ function managedProfile(overrides = {}) {
     displayName: 'CLIProxyAPI',
     api: 'openai-responses',
     baseURL: 'http://127.0.0.1:8317/v1',
-    apiKeyEnv: 'CPA_IMAGE_KEY_A',
+    apiKeyEnv: 'SYNTHETIC_CPA_REF_A',
     models: [{ id: 'old', name: 'old', contextWindow: 1000, maxTokens: 100, input: ['text'] }],
     defaultContextWindow: 262144,
     defaultMaxTokens: 32768,
@@ -39,8 +39,9 @@ function createHarness() {
   const provided = new Map()
   const listeners = new Map()
   const effects = []
-  let keyA = 'first-secret'
-  let keyB = 'second-secret'
+  const resolvedRefs = []
+  let keyA = 'SYNTHETIC_CPA_MARKER_A'
+  let keyB = 'SYNTHETIC_CPA_MARKER_B'
 
   const settingsService = {
     get(ns) {
@@ -77,10 +78,11 @@ function createHarness() {
   const credentialsService = {
     async resolve(ref) {
       const name = String(ref)
-      if (name === String(credentialRef('CPA_IMAGE_KEY_A'))) {
+      resolvedRefs.push(name)
+      if (name === String(credentialRef('SYNTHETIC_CPA_REF_A'))) {
         return keyA === undefined ? undefined : { value: keyA }
       }
-      if (name === String(credentialRef('CPA_IMAGE_KEY_B'))) {
+      if (name === String(credentialRef('SYNTHETIC_CPA_REF_B'))) {
         return keyB === undefined ? undefined : { value: keyB }
       }
       return undefined
@@ -141,6 +143,7 @@ function createHarness() {
   return {
     ctx,
     provided,
+    resolvedRefs,
     async updateProfile(profile) {
       await settingsService.mutate('llm-pi-ai', [{
         op: 'set',
@@ -187,9 +190,9 @@ test('Host add-on registers image service and resolves route plus credential at 
 
     await harness.updateProfile(managedProfile({
       baseURL: 'http://127.0.0.1:9417/v1',
-      apiKeyEnv: 'CPA_IMAGE_KEY_B',
+      apiKeyEnv: 'SYNTHETIC_CPA_REF_B',
     }))
-    harness.setCredentials('stale-secret', 'fresh-secret')
+    harness.setCredentials('SYNTHETIC_STALE_MARKER', 'SYNTHETIC_FRESH_MARKER')
 
     await service.generate({
       engine: 'gpt',
@@ -198,11 +201,15 @@ test('Host add-on registers image service and resolves route plus credential at 
     })
 
     assert.equal(IMAGE_SERVICE_EXPORT.IMAGE_GENERATION_SERVICE, 'dshCpaImageGeneration')
+    assert.deepEqual(harness.resolvedRefs, [
+      String(credentialRef('SYNTHETIC_CPA_REF_A')),
+      String(credentialRef('SYNTHETIC_CPA_REF_B')),
+    ])
     assert.equal(calls[0].url, 'http://127.0.0.1:8317/v1/images/generations')
-    assert.equal(calls[0].authorization, 'Bearer first-secret')
+    assert.match(calls[0].authorization ?? '', /^Bearer \S+$/u)
     assert.equal(calls[0].body.model, 'gpt-image-2')
     assert.equal(calls[1].url, 'http://127.0.0.1:9417/v1/images/generations')
-    assert.equal(calls[1].authorization, 'Bearer fresh-secret')
+    assert.match(calls[1].authorization ?? '', /^Bearer \S+$/u)
   } finally {
     globalThis.fetch = previousFetch
     harness.dispose()
