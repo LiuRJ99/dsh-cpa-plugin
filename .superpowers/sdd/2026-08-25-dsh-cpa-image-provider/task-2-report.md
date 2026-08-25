@@ -110,6 +110,7 @@ git commit -m "feat: register CPA image service"
 ## Fix Round 1 (Review Follow-up)
 
 - Status: DONE_WITH_CONCERNS
+- Fix Commit: `a9ee3a2c5df823b1bce5b73498cc65c1efaf90fd`
 
 ### Fix Summary
 
