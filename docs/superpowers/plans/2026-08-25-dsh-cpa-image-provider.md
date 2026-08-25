@@ -309,11 +309,11 @@ export function isImageOnlyModel(value) {
 - Delete: `src/cpa-image-stream.js`
 - Delete: `test/cpa-image-stream.test.js`（GPT 解码、URL、HTTP 错误和空结果测试已迁移到 `test/image-generation.test.js`）
 
-- [ ] **Step 1: 增加普通 stream 负向回归。**
+- [x] **Step 1: 增加普通 stream 负向回归。**
 
   在 `test/index.test.js` 中保留一个 fake `llm/stream` 请求，使用 `provider: 'CLIProxyAPI'` 和 `model: 'gpt-image-2'`，断言最终调用 `next()` 并返回 sentinel；再用普通文本 model 做相同断言。该回归必须验证主 Provider 不再发送 `/images/generations`，而不是只验证 HTTP 没有返回图片。
 
-- [ ] **Step 2: 运行红灯检查。**
+- [x] **Step 2: 运行红灯检查。**（`tdd_mode: direct` 下以删除前基线记录和删除后 focused regression 作为验证。）
 
   ```bash
   node --test test/index.test.js test/cpa-image-stream.test.js
@@ -321,11 +321,11 @@ export function isImageOnlyModel(value) {
 
   预期旧 listener 仍会接管图片 model，负向回归失败。
 
-- [ ] **Step 3: 移除主入口图片拦截。**
+- [x] **Step 3: 移除主入口图片拦截。**
 
   删除 `src/index.js` 对 `isImageGenerationModel`、`streamCpaImage` 和 `ctx.on('llm/stream', ...)` 图片短路的 import/listener；保留普通 catalog、profile synchronization、account/quota add-on 和 typed add-on 的 Fast stream listener。删除旧文件前确认所有必要的 Base64/URL 解析测试已经在新服务测试中存在。
 
-- [ ] **Step 4: 删除旧测试文件并运行回归。**
+- [x] **Step 4: 删除旧测试文件并运行回归。**
 
   ```bash
   git rm src/cpa-image-stream.js test/cpa-image-stream.test.js
@@ -337,7 +337,7 @@ export function isImageOnlyModel(value) {
 
   预期完整 Node 测试、TypeScript、bundle 和服务/Provider 回归都通过；普通文本请求和图片 model 请求均落到下一个 middleware，图片 Host 请求只存在于 `src/image-generation.ts`。
 
-- [ ] **Step 5: 提交单一网络所有者迁移。**
+- [x] **Step 5: 提交单一网络所有者迁移。**（实现、artifact boundary 与锁文件修复提交为 `d38b443`、`6086d73`、`eed543b`。）
 
   ```bash
   git add src/index.js test/index.test.js

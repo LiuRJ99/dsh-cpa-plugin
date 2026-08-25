@@ -15,10 +15,10 @@
 
 ## 3. 单一网络所有者
 
-- [ ] 3.1 将现有 GPT 图片响应解析测试迁移到新服务测试，并为普通 `llm/stream` 增加继续调用下游 middleware 的负例回归测试。
-- [ ] 3.2 从 `src/index.js` 移除旧的 image-generation `llm/stream` 拦截，不再把图片模型当作普通聊天模型路由。
-- [ ] 3.3 删除不再需要的 `src/cpa-image-stream.js`，同步清理其测试和过时导入。
-- [ ] 3.4 更新 `test/index.test.js` 与相关包构建输出，确认文本模型聊天路径未改变。
+- [x] 3.1 将现有 GPT 图片响应解析测试迁移到新服务测试，并为普通 `llm/stream` 增加继续调用下游 middleware 的负例回归测试。
+- [x] 3.2 从 `src/index.js` 移除旧的 image-generation `llm/stream` 拦截，不再把图片模型当作普通聊天模型路由。
+- [x] 3.3 删除不再需要的 `src/cpa-image-stream.js`，同步清理其测试和过时导入。
+- [x] 3.4 更新 `test/index.test.js` 与相关包构建输出，确认文本模型聊天路径未改变。
 
 ## 4. 验证与交付
 
