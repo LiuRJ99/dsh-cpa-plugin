@@ -1,5 +1,11 @@
 node_modules/
 .npm-cache/
+*.tgz
+.worktrees/
+.agents/
+.claude/
+.codex/
+
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
