@@ -7,7 +7,7 @@ import ts from 'typescript'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
 import { isImageOnlyModel } from '../src/catalog.js'
 
-test('client bundle registers a lifecycle-owned Plugins Settings tab', async () => {
+test('client bundle registers a lifecycle-owned Settings section', async () => {
   let definition
   globalThis.window = {
     __ModuleLoader__: {
@@ -81,11 +81,11 @@ test('client bundle registers a lifecycle-owned Plugins Settings tab', async () 
     }
     plugin.apply(ctx)
     assert.equal(typeof effect, 'function')
-    assert.deepEqual(injections, ['settings.plugins.tab'])
+    assert.deepEqual(injections, ['settings.section'])
     assert.equal(registrations.length, 1)
-    assert.equal(registrations[0].options.name, 'settings.plugins.tab')
+    assert.equal(registrations[0].options.name, 'settings.section')
     assert.equal(registrations[0].options.id, 'cliproxyapi')
-    assert.equal(registrations[0].options.order, 30)
+    assert.equal(registrations[0].options.order, 25)
     assert.equal(typeof registrations[0].options.inject, 'function')
     assert.equal(typeof registrations[0].component, 'function')
   } finally {
@@ -104,7 +104,7 @@ test('client owns only its Settings slot and keeps the configuration accessible'
   assert.doesNotMatch(source, /MutationObserver/)
   assert.doesNotMatch(source, /querySelector(All)?\s*\(/)
   assert.doesNotMatch(source, /modelsHeading|configuredRows|BOOTSTRAP_ATTRIBUTE|HIDDEN_ATTRIBUTE/)
-  assert.match(source, /settings\.plugins\.tab/)
+  assert.match(source, /settings\.section/)
   assert.match(source, /ctx\.settingsScope/)
   assert.match(source, /slots\.inject\(SETTINGS_SLOT/)
   assert.match(source, /expectedRevision/)
@@ -144,10 +144,16 @@ test('unified refresh invalidates stale model capability requests', async () => 
 test('composer input left slot exposes a model-scoped account quota switcher', async () => {
   const source = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
   const indicator = await readFile(new URL('../src/client/cpa-account-indicator.tsx', import.meta.url), 'utf8')
+  const styles = await readFile(new URL('../src/client/styles.ts', import.meta.url), 'utf8')
   assert.match(source, /conversation\.input\.left/)
   assert.match(source, /CpaAccountIndicator/)
   assert.match(indicator, /role="status"/)
   assert.match(indicator, /dsh-cpa-account-indicator-progress/)
+  assert.match(indicator, /dsh-cpa-account-indicator-label/)
+  assert.match(indicator, /dsh-cpa-quota-full/)
+  assert.match(indicator, /dsh-cpa-quota-short/)
+  assert.match(styles, /@container\s*\(max-width:\s*640px\)/)
+  assert.match(styles, /@container\s*\(max-width:\s*480px\)/)
   assert.match(indicator, /onClick/)
   assert.match(indicator, /loadAccountModels/)
   assert.match(indicator, /selectAccount/)

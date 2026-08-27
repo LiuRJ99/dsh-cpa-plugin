@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
     const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
     const PROFILE_SYNC_TIMEOUT_MS = 30000
     const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'
-    const SETTINGS_SLOT = 'settings.plugins.tab'
+    const SETTINGS_SLOT = 'settings.section'
     const SETTINGS_TAB_ID = 'cliproxyapi'
     const SETTINGS_LOCALE_NS = 'settings.cliProxyApi'
     const ADDITIVE_CLIENT_ID = '@LiuRJ99/dsh-cpa-plugin/legacy-client-addon'
@@ -1106,7 +1106,7 @@ window.__ModuleLoader__.load({
       ctx.slots.inject(SETTINGS_SLOT, () => ctx.slots.register({
         name: SETTINGS_SLOT,
         id: SETTINGS_TAB_ID,
-        order: 30,
+        order: 25,
         label: () => t('tab'),
         locale: SETTINGS_LOCALE_NS,
         inject: () => ({ api, connection: ctx.get('connection'), remote, scope, cpa }),

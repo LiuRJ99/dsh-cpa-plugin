@@ -93,6 +93,11 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
     : percent === undefined
       ? primary.label
       : `${primary.label} ${Math.round(percent)}%`
+  const shortQuotaLabel = percent !== undefined
+    ? `${Math.round(percent)}%`
+    : primary !== undefined
+      ? primary.label
+      : quotaLabel
   const title = [
     accountLabel(account),
     accountIdentity(account),
@@ -121,11 +126,11 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
         onClick={() => { setOpen(value => !value) }}
       >
         <span className="dsh-cpa-account-indicator-progress" style={percent === undefined ? undefined : { width: `${percent}%` }} />
-        <span className="dsh-cpa-account-indicator-copy">
-          <strong>{accountLabel(account)}</strong>
-          <small>{accountIdentity(account)}</small>
+        <span className="dsh-cpa-account-indicator-label">{accountLabel(account)}</span>
+        <span className="dsh-cpa-account-indicator-quota">
+          <span className="dsh-cpa-quota-full">{quotaLabel}</span>
+          <span className="dsh-cpa-quota-short">{shortQuotaLabel}</span>
         </span>
-        <span className="dsh-cpa-account-indicator-quota">{quotaLabel}</span>
         <span className="dsh-cpa-account-indicator-dot" aria-hidden="true" />
       </button>
       {open ? (
