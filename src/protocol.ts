@@ -62,6 +62,10 @@ export interface CpaAccount {
   lastRefresh?: string
   success: number
   failed: number
+  /** Request success count in the recent sliding window (200 minutes). */
+  recentSuccess?: number
+  /** Request failure count in the recent sliding window (200 minutes). */
+  recentFailed?: number
 }
 
 export interface CpaConfigView {

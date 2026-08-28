@@ -466,6 +466,35 @@ test('initial profile waits until the host writes complete model capabilities', 
   }
 })
 
+test('accountWindowStats and accountCumulativeStats extract correct metrics', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { accountWindowStats, accountCumulativeStats } = displayModule
+
+  // accountWindowStats uses strictly the recent window
+  const windowStats1 = accountWindowStats({ recentSuccess: 200, recentFailed: 1 })
+  assert.equal(windowStats1.success, 200)
+  assert.equal(windowStats1.failed, 1)
+
+  const windowStats2 = accountWindowStats({ recentSuccess: 0, recentFailed: 0 })
+  assert.equal(windowStats2.success, 0)
+  assert.equal(windowStats2.failed, 0)
+
+  const windowStats3 = accountWindowStats({})
+  assert.equal(windowStats3.success, 0)
+  assert.equal(windowStats3.failed, 0)
+
+  // accountCumulativeStats uses cumulative values
+  const cumulativeStats1 = accountCumulativeStats({ success: 1929, failed: 13 })
+  assert.equal(cumulativeStats1.success, 1929)
+  assert.equal(cumulativeStats1.failed, 13)
+  assert.equal(cumulativeStats1.hasRecords, true)
+
+  const cumulativeStats2 = accountCumulativeStats({ success: 0, failed: 0 })
+  assert.equal(cumulativeStats2.success, 0)
+  assert.equal(cumulativeStats2.failed, 0)
+  assert.equal(cumulativeStats2.hasRecords, false)
+})
+
 async function loadTsModule(url, requireMap) {
   const source = await readFile(url, 'utf8')
   const compiled = ts.transpileModule(source, {

@@ -976,6 +976,15 @@ function toAccount(value: unknown): CpaAccount[] {
   const plan = accountPlan(raw)
   const quota = accountQuota(raw)
   const projectId = stringValue(raw.project_id) ?? stringValue(raw.projectId)
+  const rawRecent = Array.isArray(raw.recent_requests)
+    ? raw.recent_requests
+    : Array.isArray(raw.recentRequests) ? raw.recentRequests : undefined
+  const recentSuccess = rawRecent === undefined
+    ? undefined
+    : rawRecent.reduce((sum, item) => sum + numberValue(valueObject(item)?.success), 0)
+  const recentFailed = rawRecent === undefined
+    ? undefined
+    : rawRecent.reduce((sum, item) => sum + numberValue(valueObject(item)?.failed), 0)
   return [{
     id,
     authIndex,
@@ -995,6 +1004,8 @@ function toAccount(value: unknown): CpaAccount[] {
     ...stringValue(raw.last_refresh) === undefined ? {} : { lastRefresh: stringValue(raw.last_refresh) },
     success: numberValue(raw.success),
     failed: numberValue(raw.failed),
+    ...recentSuccess === undefined ? {} : { recentSuccess },
+    ...recentFailed === undefined ? {} : { recentFailed },
   }]
 }
 

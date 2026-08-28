@@ -13,6 +13,40 @@ export interface AccountQuotaProgress {
   resetAt?: string
 }
 
+export interface AccountWindowStats {
+  success: number
+  failed: number
+}
+
+export interface AccountCumulativeStats {
+  success: number
+  failed: number
+  hasRecords: boolean
+}
+
+/** 3h20m sliding window stats for composer popup. */
+export function accountWindowStats(
+  account: Pick<CpaAccount, 'recentSuccess' | 'recentFailed'>,
+): AccountWindowStats {
+  return {
+    success: account.recentSuccess ?? 0,
+    failed: account.recentFailed ?? 0,
+  }
+}
+
+/** Cumulative request stats for settings card. */
+export function accountCumulativeStats(
+  account: Pick<CpaAccount, 'success' | 'failed'>,
+): AccountCumulativeStats {
+  const success = account.success ?? 0
+  const failed = account.failed ?? 0
+  return {
+    success,
+    failed,
+    hasRecords: success > 0 || failed > 0,
+  }
+}
+
 export function accountLabel(account: Pick<CpaAccount, 'provider' | 'plan'>): string {
   const provider = providerLabel(account.provider)
   const plan = planLabel(account.plan)

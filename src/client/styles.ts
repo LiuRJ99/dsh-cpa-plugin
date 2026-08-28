@@ -31,6 +31,10 @@ const CSS = `
 .dsh-cpa-account-option-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:0;overflow:hidden}
 .dsh-cpa-account-option-copy strong,.dsh-cpa-account-option-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-cpa-account-option-copy strong{font-size:12px;font-weight:600;line-height:15px}
+.dsh-cpa-account-option-title{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-cpa-count{font-weight:600;font-size:11px}
+.dsh-cpa-count.is-success{color:var(--dsw-alias-state-success-label,#4caf70)}
+.dsh-cpa-count.is-failed{color:var(--dsw-alias-state-error-primary,#e45c5c)}
 .dsh-cpa-account-option-copy small{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:13px}
 .dsh-cpa-account-option-quota{max-width:75px;overflow:hidden;color:var(--dsw-alias-label-tertiary);font-size:11px;text-align:right;text-overflow:ellipsis;white-space:nowrap}
 .dsh-cpa-account-option-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);text-align:center}
@@ -105,6 +109,11 @@ const CSS = `
 .dsh-cpa-account-quota-value{min-width:34px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dsh-cpa-account-quota-reset{grid-column:2 / -1;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:14px;white-space:nowrap}
 .dsh-cpa-account-quota-empty{margin-top:2px}
+.dsh-cpa-account-stats-badges{display:inline-flex;align-items:center;gap:8px;font-size:12px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
+.dsh-cpa-stat-badge{display:inline-flex;align-items:center;gap:4px}
+.dsh-cpa-badge-dot{display:inline-block;width:7px;height:7px;flex:0 0 7px;border-radius:50%}
+.dsh-cpa-badge-dot.is-success{background:var(--dsw-alias-state-success-label,#4caf70)}
+.dsh-cpa-badge-dot.is-failed{background:var(--dsw-alias-state-error-primary,#e45c5c)}
 .dsh-cpa-account-status-dot{display:inline-block;width:9px;height:9px;flex:0 0 9px;border-radius:50%;box-shadow:0 0 0 2px var(--dsw-specific-menu,#fff)}
 .dsh-cpa-account-status-dot.is-available{background:var(--dsw-alias-state-success-label,#4caf70)}
 .dsh-cpa-account-status-dot.is-quota-low{background:var(--dsw-alias-state-warn-label,#e3a33d)}

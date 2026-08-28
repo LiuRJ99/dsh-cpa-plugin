@@ -5,7 +5,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { CpaAccount } from './protocol.ts'
 import { CpaClient, type CpaClientState } from './cpa-client.ts'
 import type { CpaLocaleKey } from './locales.ts'
-import { accountAvailability, accountAvailabilityLabel, accountIdentity, accountLabel, accountQuotaProgress, formatQuotaResetAt, type AccountQuotaProgress } from './cpa-account-display.ts'
+import { accountAvailability, accountAvailabilityLabel, accountCumulativeStats, accountIdentity, accountLabel, accountQuotaProgress, formatQuotaResetAt, type AccountQuotaProgress } from './cpa-account-display.ts'
 import { CpaModelSettingsModule, type CpaModelSettingsController, type CpaModelSettingsFace } from './cpa-model-settings.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 
@@ -258,6 +258,7 @@ function AccountRow({ account, t }: { account: CpaAccount; t: (key: CpaLocaleKey
   const availability = accountAvailability(account)
   const status = accountAvailabilityLabel(account, t)
   const quota = accountQuotaProgress(account.quota, t)
+  const stats = accountCumulativeStats(account)
   return (
     <div className="dsh-cpa-account-row">
       <span className="dsh-cpa-account-copy">
@@ -265,7 +266,20 @@ function AccountRow({ account, t }: { account: CpaAccount; t: (key: CpaLocaleKey
         <small>{accountIdentity(account)}</small>
         {quota.length > 0 ? <span className="dsh-cpa-account-quota">{quota.map(window => <QuotaProgress key={window.key} progress={window} availability={availability} t={t} />)}</span> : <small className="dsh-cpa-account-quota-empty">{t('account.quotaUnknown')}</small>}
       </span>
-      <span className={`dsh-cpa-account-status-dot is-${availability}`} role="img" aria-label={status} title={status} />
+      {stats.hasRecords ? (
+        <span className="dsh-cpa-account-stats-badges" title={`${status} · ${stats.success} / ${stats.failed}`}>
+          <span className="dsh-cpa-stat-badge is-success">
+            <span className="dsh-cpa-badge-dot is-success" aria-hidden="true" />
+            <span>{stats.success}</span>
+          </span>
+          <span className="dsh-cpa-stat-badge is-failed">
+            <span className="dsh-cpa-badge-dot is-failed" aria-hidden="true" />
+            <span>{stats.failed}</span>
+          </span>
+        </span>
+      ) : (
+        <span className={`dsh-cpa-account-status-dot is-${availability}`} role="img" aria-label={status} title={status} />
+      )}
     </div>
   )
 }

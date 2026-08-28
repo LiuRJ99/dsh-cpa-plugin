@@ -696,6 +696,9 @@ window.__ModuleLoader__.load({
               const color = quotaColor(status)
               const contact = accountContact(account)
               const windows = quotaWindows(account)
+              const success = Number(account.success ?? 0)
+              const failed = Number(account.failed ?? 0)
+              const hasRecords = success > 0 || failed > 0
               return React.createElement(
                 'div',
                 { key: account.authIndex || account.id, style: styles.accountRow },
@@ -703,7 +706,49 @@ window.__ModuleLoader__.load({
                   'div',
                   { style: styles.accountTitle },
                   React.createElement('span', null, accountTitle(account)),
-                  React.createElement('span', { style: { ...styles.statusDot, background: color }, title: status }),
+                  hasRecords
+                    ? React.createElement(
+                      'span',
+                      {
+                        style: {
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          fontVariantNumeric: 'tabular-nums',
+                          color: 'var(--dsw-alias-label-secondary, #717782)',
+                        },
+                        title: `${status} · 成功: ${success}, 失败: ${failed}`,
+                      },
+                      React.createElement(
+                        'span',
+                        { style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } },
+                        React.createElement('span', {
+                          style: {
+                            width: '7px',
+                            height: '7px',
+                            borderRadius: '50%',
+                            background: 'var(--dsw-alias-state-success-label, #4caf70)',
+                          },
+                        }),
+                        React.createElement('span', null, String(success)),
+                      ),
+                      React.createElement(
+                        'span',
+                        { style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } },
+                        React.createElement('span', {
+                          style: {
+                            width: '7px',
+                            height: '7px',
+                            borderRadius: '50%',
+                            background: 'var(--dsw-alias-state-error-primary, #e45c5c)',
+                          },
+                        }),
+                        React.createElement('span', null, String(failed)),
+                      ),
+                    )
+                    : React.createElement('span', { style: { ...styles.statusDot, background: color }, title: status }),
                 ),
                 contact
                   ? React.createElement('div', { style: styles.accountMeta, title: contact }, contact)

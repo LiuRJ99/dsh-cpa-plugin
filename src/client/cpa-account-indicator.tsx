@@ -10,6 +10,7 @@ import {
   accountIdentity,
   accountLabel,
   accountQuotaProgress,
+  accountWindowStats,
   type AccountQuotaProgress,
 } from './cpa-account-display.ts'
 
@@ -158,6 +159,7 @@ function AccountOption({
   const progress = accountQuotaProgress(account.quota, t)
   const primary = progress[0]
   const percent = primary?.percent
+  const stats = accountWindowStats(account)
   return (
     <button
       type="button"
@@ -168,7 +170,11 @@ function AccountOption({
     >
       <span className="dsh-cpa-account-option-progress" style={percent === undefined ? undefined : { width: `${percent}%` }} />
       <span className="dsh-cpa-account-option-copy">
-        <strong>{accountLabel(account)}</strong>
+        <strong className="dsh-cpa-account-option-title">
+          <span>{accountLabel(account)}</span>
+          {stats.success > 0 ? <span className="dsh-cpa-count is-success">· {stats.success}</span> : null}
+          {stats.failed > 0 ? <span className="dsh-cpa-count is-failed">· {stats.failed}</span> : null}
+        </strong>
         <small>{accountIdentity(account)}</small>
       </span>
       <span className="dsh-cpa-account-option-quota">{primary === undefined ? t('account.quotaUnknown') : primary.percent === undefined ? primary.label : `${Math.round(primary.percent)}%`}</span>
