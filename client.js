@@ -29,7 +29,7 @@ window.__ModuleLoader__.load({
     const QUOTA_CACHE_KEY = 'dsh-cliproxyapi:quota-cache:v1'
      const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000]
     const EMPTY_CPA_STATE = { accounts: [], status: 'idle', quotaFetchedAt: undefined, refreshIntervalMs: 300000 }
-        const inject = ['connection', 'remote', 'slots', 'locale', 'settingsScope']
+        const inject = ['connection', 'remote', 'remote.session', 'slots', 'locale', 'settingsScope']
 
     const copy = {
       en: {

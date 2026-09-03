@@ -74,6 +74,10 @@ function createHarness() {
         },
       }
     },
+    installSection(_owner, ns, _schema, entry) {
+      const key = String(ns)
+      if (!registeredSections.has(key)) registeredSections.set(key, entry)
+    },
   }
 
   const credentialsService = {

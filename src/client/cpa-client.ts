@@ -1,4 +1,4 @@
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client'
 import type { CpaAccount, CpaAccountModelsView, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaRefreshIntervalView, CpaSpeed } from './protocol.ts'
 import type { ModelCapability } from '../model-capabilities.ts'

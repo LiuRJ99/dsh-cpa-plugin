@@ -1,6 +1,9 @@
 import { useState, useSyncExternalStore } from 'react'
-import type { DiscoveredModelView, IApiClient, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { LlmDiscoveredModel, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { CpaLocaleKey } from './locales.ts'
 import type { CpaClient } from './cpa-client.ts'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
@@ -91,7 +94,7 @@ interface NormalizedCpaModel {
 export class CpaModelSettingsController {
   readonly store: SnapshotStore<CpaModelSettingsState>
 
-  private namespace: SettingsNamespaceView | undefined
+  private namespace: { value: unknown; revision: number } | undefined
   private revision = 0
   private writable = false
   private loading = true
@@ -114,10 +117,16 @@ export class CpaModelSettingsController {
   private baseline: ModelDraftState = cloneDraft(this.draft)
 
   constructor(
-    private readonly api: Pick<IApiClient, 'settings' | 'credentials' | 'llm'>,
+    private readonly ctx: ClientContext,
+    private readonly settings: SettingsScope<unknown>,
     private readonly cpa: CpaClient,
   ) {
     this.store = createSnapshotStore(this.projection())
+    settings.subscribe(() => {
+      if (this.migrating || this.saving) this.publish()
+      else if (!this.isDirty()) void this.load()
+      else this.publish()
+    })
     cpa.store.subscribe(() => {
       if (!this.isDirty()) void this.load()
       else this.publish()
@@ -185,10 +194,11 @@ export class CpaModelSettingsController {
     this.error = null
     this.publish()
     try {
-      const response = await this.api.settings.describe({})
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      this.writable = response.result.value.writable
-      this.namespace = response.result.value.namespaces.find((entry: SettingsNamespaceView) => entry.ns === SETTINGS_NS)
+      const snapshot = this.settings.getSnapshot()
+      this.writable = snapshot.writable
+      this.namespace = snapshot.value === undefined
+        ? undefined
+        : { value: snapshot.value, revision: snapshot.revision ?? 0 }
       const providerId = this.cpa.store.getSnapshot().providerId.trim() || 'cpa'
       const profile = profileAt(this.namespace, providerId)
       this.revision = this.namespace?.revision ?? 0
@@ -250,14 +260,12 @@ export class CpaModelSettingsController {
 
     this.migrating = true
     try {
-      const response = await this.api.settings.mutate({
-        ns: SETTINGS_NS,
-        expectedRevision: this.revision,
-        ops,
-      })
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      this.namespace = response.result.value
-      this.revision = response.result.value.revision
+      await this.settings.mutate(ops as SettingsPathOpView[], this.revision)
+      const snapshot = this.settings.getSnapshot()
+      this.namespace = snapshot.value === undefined
+        ? undefined
+        : { value: snapshot.value, revision: snapshot.revision ?? this.revision }
+      this.revision = snapshot.revision ?? this.revision
       this.configured = true
     } finally {
       this.migrating = false
@@ -266,9 +274,10 @@ export class CpaModelSettingsController {
 
   private async readCredential(): Promise<void> {
     try {
-      const response = await this.api.credentials.describe({ refs: [this.draft.apiKeyEnv] })
-      if (!response.result.ok) return
-      const view = response.result.value.credentials[this.draft.apiKeyEnv]
+      const ref = this.draft.apiKeyEnv
+      const response = await this.ctx.remote.credentials.describe([ref])
+      if (!response.ok) return
+      const view = response.value[ref]
       this.keyConfigured = view?.configured ?? false
       this.keyWritable = view?.writable ?? true
     } catch {
@@ -293,15 +302,14 @@ export class CpaModelSettingsController {
     this.discoveryError = null
     this.publish()
     try {
-      const response = await this.api.llm.discoverModels({
-        settingsNs: DISCOVERY_NS,
+      const response = await this.ctx.remote.llm.discoverModels(DISCOVERY_NS, {
         provider: this.draft.providerId,
         baseURL,
         api: this.draft.api,
         ...this.draft.keyDraft.trim() === '' ? {} : { apiKey: this.draft.keyDraft.trim() },
       })
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      const found = response.result.value.models
+      if (!response.ok) throw new Error(response.error.message)
+      const found = response.value
       if (found.length === 0) throw new Error('CLIProXyAPI returned no models')
       this.draft.models = mergeModels(this.draft.models, found)
     } catch (cause) {
@@ -340,8 +348,8 @@ export class CpaModelSettingsController {
     this.publish()
     try {
       if (this.draft.keyDraft.trim() !== '') {
-        const key = await this.api.credentials.set({ ref: this.draft.apiKeyEnv as never, value: this.draft.keyDraft.trim() })
-        if (!key.result.ok) throw new Error(key.result.error.message)
+        const key = await this.ctx.remote.credentials.set(this.draft.apiKeyEnv, this.draft.keyDraft.trim())
+        if (!key.ok) throw new Error(key.error.message)
       }
       const ops: ({ op: 'set'; path: string[]; value: unknown } | { op: 'unset'; path: string[] })[] = [
         { op: 'set', path: ['providers', this.draft.providerId, 'api'], value: this.draft.api },
@@ -352,14 +360,12 @@ export class CpaModelSettingsController {
         ops.push({ op: 'unset', path: ['providers', this.draft.providerId, 'compat'] })
       }
       ops.push({ op: 'set', path: ['providers', this.draft.providerId, 'models'], value: models.value })
-      const response = await this.api.settings.mutate({
-        ns: SETTINGS_NS,
-        expectedRevision: this.revision,
-        ops,
-      })
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      this.namespace = response.result.value
-      this.revision = response.result.value.revision
+      await this.settings.mutate(ops as SettingsPathOpView[], this.revision)
+      const snapshot = this.settings.getSnapshot()
+      this.namespace = snapshot.value === undefined
+        ? undefined
+        : { value: snapshot.value, revision: snapshot.revision ?? this.revision }
+      this.revision = snapshot.revision ?? this.revision
       this.configured = true
       this.draft.keyDraft = ''
       this.draft.providerId = this.draft.providerId.trim()
@@ -462,7 +468,7 @@ export function CpaModelSettingsModule(props: ModelModuleProps) {
   )
 }
 
-function profileAt(namespace: SettingsNamespaceView | undefined, providerId: string): ModelProfile | undefined {
+function profileAt(namespace: { value: unknown } | undefined, providerId: string): ModelProfile | undefined {
   const providers = namespace?.value
   if (typeof providers !== 'object' || providers === null) return undefined
   const profile = (providers as { providers?: unknown }).providers
@@ -490,7 +496,7 @@ function modelsOf(value: unknown): CpaModelDraft[] {
   })
 }
 
-function mergeModels(current: readonly CpaModelDraft[], found: readonly DiscoveredModelView[]): CpaModelDraft[] {
+function mergeModels(current: readonly CpaModelDraft[], found: readonly LlmDiscoveredModel[]): CpaModelDraft[] {
   const existing = new Map(current.filter(model => model.id.trim() !== '').map(model => [model.id.trim(), model]))
   for (const model of found) {
     if (!existing.has(model.id)) {

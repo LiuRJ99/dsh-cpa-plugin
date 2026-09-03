@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CpaAccount } from './protocol.ts'
 import { CpaClient, type CpaClientState } from './cpa-client.ts'
@@ -55,7 +56,7 @@ export class CpaSettingsCardController {
   private readonly store: SnapshotStore<CpaSettingsState>
 
   constructor(
-    private readonly api: Pick<IApiClient, 'credentials'>,
+    private readonly ctx: ClientContext,
     private readonly cpa: CpaClient,
     private readonly model: CpaModelSettingsController,
   ) {
@@ -135,9 +136,9 @@ export class CpaSettingsCardController {
       return
     }
     try {
-      const response = await this.api.credentials.describe({ refs: [ref] })
-      if (!response.result.ok || ref !== this.cpa.store.getSnapshot().managementKeyEnv.trim()) return
-      const view = response.result.value.credentials[ref]
+      const response = await this.ctx.remote.credentials.describe([ref])
+      if (!response.ok || ref !== this.cpa.store.getSnapshot().managementKeyEnv.trim()) return
+      const view = response.value[ref]
       this.keyConfigured = view?.configured ?? false
       this.keyWritable = view?.writable ?? true
       this.publish()
@@ -163,8 +164,8 @@ export class CpaSettingsCardController {
     try {
       if (this.model.store.getSnapshot().dirty) await this.model.save()
       if (this.keyDraft.trim() !== '') {
-        const response = await this.api.credentials.set({ ref: ref as never, value: this.keyDraft.trim() })
-        if (!response.result.ok) throw new Error(response.result.error.message)
+        const response = await this.ctx.remote.credentials.set(ref, this.keyDraft.trim())
+        if (!response.ok) throw new Error(response.error.message)
         this.keyDraft = ''
       }
       await this.cpa.refreshConfig().catch(() => { /* unified refresh below reports it */ })

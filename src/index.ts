@@ -8,9 +8,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
-import type { RpcResult } from '@deepseek-ai/dsh-host-apiproxy/api'
+import type { RpcResult } from '@deepseek-ai/dsh-client-connection/client'
+import type {} from '@deepseek-ai/dsh-settings'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
 import { isImageOnlyModel } from './catalog.js'
 import { streamCpaFast } from './cpa-fast-stream.ts'
@@ -28,13 +28,13 @@ import type { CpaAccount, CpaAccountModelsRequest, CpaAccountModelsView, CpaAcco
 export const name = 'dsh-cpa-plugin'
 
 /** The model settings namespace whose CPA route carries the endpoint/models. */
-const MODEL_SETTINGS_NS = settingsNamespace('llm-pi-ai')
-const MODEL_DISCOVERY_NS = settingsNamespace('llm-cliproxyapi')
+const MODEL_SETTINGS_NS = 'llm-pi-ai' as const
+const MODEL_DISCOVERY_NS = 'llm-cliproxyapi' as const
 const MODEL_KEY_REF = 'CPA_MODEL_API_KEY'
 /** The native CLIProxyAPI provider's credential reference. */
 const NATIVE_MODEL_KEY_REF = 'DSH_CLIPROXY_API_KEY'
 const MODEL_REFRESH_EVENT = 'dsh-cpa/refresh-models'
-const REFRESH_SETTINGS_NS = settingsNamespace('dsh-cpa-plugin')
+const REFRESH_SETTINGS_NS = 'dsh-cpa-plugin' as const
 const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000] as const
 
 type RefreshSettings = { refreshIntervalMs: number }
@@ -98,9 +98,11 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   let capabilitiesEpoch = 0
   const refreshEntry: RefreshSettings = { refreshIntervalMs: normalizeRefreshInterval(config.refreshIntervalMs) }
 
-  installSettingsSection(ctx, REFRESH_SETTINGS_NS, RefreshSettings, refreshEntry, {
-    setSource: () => {},
-    onChange: () => {},
+  ctx.inject(['settings'], (scope) => {
+    scope.settings.installSection(ctx, REFRESH_SETTINGS_NS, RefreshSettings, refreshEntry, {
+      setSource: () => {},
+      onChange: () => {},
+    })
   })
 
   type CpaStreamOptions = Parameters<typeof streamCpaFast>[0]
@@ -218,9 +220,10 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   // retained as an opt-in compatibility path only.
   if (config.registerDiscovery !== false) {
     ctx.inject(['llm'], (scope) => {
-      scope.llm.registerModelDiscovery(MODEL_DISCOVERY_NS, request => discoverCpaModels(
+      scope.llm.registerModelDiscovery(MODEL_DISCOVERY_NS, (request, signal) => discoverCpaModels(
         request,
         () => readCredential(MODEL_KEY_REF),
+        signal,
       ))
     })
   }
@@ -360,7 +363,7 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
         default:
           throw new Error(`dsh-cpa-plugin: unknown endpoint ${endpoint}`)
       }
-    }, { authority: 'loopback' })
+    })
   })
 
   return { refreshAccounts, readAccounts }

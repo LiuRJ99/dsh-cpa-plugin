@@ -78,6 +78,10 @@ function createContext(initialSection, initialCredential) {
         },
       }
     },
+    installSection(_owner, ns, _schema, entry) {
+      const key = String(ns)
+      if (!registeredSections.has(key)) registeredSections.set(key, entry)
+    },
   }
 
   const credentialsService = {
@@ -501,7 +505,7 @@ test('first profile synchronization restores capabilities stripped by the browse
       reasoningEfforts: {
         low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
       },
-      compat: { chatTemplateKwargs: {} },
+      compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} },
     })
     assert.deepEqual(profile.models[1].input, ['text'])
     await waitFor(() => harness.timeouts.some((row) => row.delay === 300000))

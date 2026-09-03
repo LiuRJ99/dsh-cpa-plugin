@@ -16,17 +16,18 @@ const DEFAULT_TIMEOUT_MS = 15000
 export async function discoverCpaModels(
   request: LlmModelDiscoveryRequest,
   resolveStoredApiKey: () => Promise<string | undefined>,
+  signal?: AbortSignal,
 ): Promise<readonly LlmDiscoveredModel[]> {
   const baseURL = normalizeBaseURL(request.baseURL)
   const url = `${baseURL}/models?client_version=dsh-cpa-plugin`
   const apiKey = request.apiKey?.trim() || await resolveStoredApiKey()
   const controller = new AbortController()
-  const forwardAbort = (): void => { controller.abort(request.signal?.reason) }
+  const forwardAbort = (): void => { controller.abort(signal?.reason) }
   const timer = setTimeout(() => {
     controller.abort(new Error(`CLIProXyAPI model discovery timed out after ${DEFAULT_TIMEOUT_MS} ms`))
   }, DEFAULT_TIMEOUT_MS)
-  if (request.signal?.aborted) forwardAbort()
-  else request.signal?.addEventListener('abort', forwardAbort, { once: true })
+  if (signal?.aborted) forwardAbort()
+  else signal?.addEventListener('abort', forwardAbort, { once: true })
 
   try {
     const response = await fetch(url, {
@@ -47,7 +48,7 @@ export async function discoverCpaModels(
     return models
   } finally {
     clearTimeout(timer)
-    request.signal?.removeEventListener('abort', forwardAbort)
+    signal?.removeEventListener('abort', forwardAbort)
   }
 }
 

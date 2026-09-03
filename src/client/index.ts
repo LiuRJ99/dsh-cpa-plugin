@@ -1,12 +1,17 @@
 /** Browser half of the external CPA integration. */
-import type { ClientContext, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ConnectionHandle, SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { CpaLocaleKey } from './locales.ts'
@@ -29,7 +34,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 export const inject = [
-  'connection', 'locale', 'modelDirectories', 'remote', 'sessions', 'slots',
+  'connection', 'locale', 'modelDirectories', 'remote', 'remote.session', 'sessions', 'settingsScope', 'slots',
 ]
 
 /**
@@ -60,14 +65,14 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
   // The only composer change is a lower-priority occupant of the existing
   // model seat. The original surface remains the visual baseline; the add-on
   // only contributes provider-specific model grouping and controls.
-  ctx.inject(['slots', 'modelDirectories', 'sessions'], (scope) => {
+  ctx.inject(['slots', 'modelDirectories', 'remote.session', 'sessions'], (scope) => {
     const models = scope.modelDirectories
     const sessions = scope.sessions
     scope.slots.inject('conversation.input.model', () => scope.slots.register({
       name: 'conversation.input.model',
       priority: -1,
       locale: NS,
-      inject: (sessionId) => {
+      inject: (sessionId: SessionId) => {
         const directory = models.directoryFor(sessionId)
         const session = sessions.binding(sessionId)?.session
         const available = sessions.subagentAddress(sessionId) === undefined
@@ -90,7 +95,7 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
       id: 'cpa-account',
       order: 20,
       locale: NS,
-      inject: (sessionId) => ({ cpa, sessionId, directory: models.directoryFor(sessionId).store }),
+      inject: (sessionId: SessionId) => ({ cpa, sessionId, directory: models.directoryFor(sessionId).store }),
     }, CpaAccountIndicator))
   })
 
@@ -100,27 +105,27 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
 /** Legacy standalone client entry retained for the pre-upstream layout. */
 export function apply(ctx: ClientContext): void {
   const cpa = applyAdditive(ctx)
-  const connection = ctx.get('connection') as unknown as ConnectionHandle
-  const model = new CpaModelSettingsController(connection.api, cpa)
   void cpa.loadConfig().catch(() => { /* settings card exposes the error */ })
-
-  // The native Models page owns the route protocol. When it changes a CPA
-  // profile from completions to Responses, reload the plugin's redacted view
-  // so the migration can remove completion-only compat fields immediately.
-  ctx.effect(() => {
-    const stop = ctx.remote.$on('settings/document-updated', (namespace) => {
-      if (namespace === 'llm-pi-ai') model.reload()
-    })
-    return stop
-  }, 'dsh-cpa: model settings refresh')
 
   // Settings → Plugins → Plugin configuration. No new main-panel button or
   // standalone quota route is introduced. The card is keyed on the settings
   // namespace the Host add-on serves (`dsh-cpa-plugin`), matching the
   // configurable-plugins tab's keyed `settings.plugin.item` dispatch.
-  ctx.inject(['slots', 'connection'], (scope) => {
-    const clientConnection = scope.get('connection') as unknown as ConnectionHandle
-    const card = new CpaSettingsCardController(clientConnection.api, cpa, model)
+  ctx.inject(['slots', 'settingsScope'], (scope) => {
+    const modelSettings = scope.settingsScope.bind({ namespace: 'llm-pi-ai' })
+    const model = new CpaModelSettingsController(ctx, modelSettings, cpa)
+    const card = new CpaSettingsCardController(ctx, cpa, model)
+
+    // The native Models page owns the route protocol. When it changes a CPA
+    // profile from completions to Responses, reload the settings scope so the
+    // migration can remove completion-only fields immediately.
+    ctx.effect(() => {
+      const stop = ctx.remote.$on('settings/document-updated', (namespace) => {
+        if (namespace === 'llm-pi-ai') model.reload()
+      })
+      return stop
+    }, 'dsh-cpa: model settings refresh')
+
     scope.slots.inject('settings.plugin.item', () => scope.slots.register({
       name: 'settings.plugin.item',
       key: 'dsh-cpa-plugin',

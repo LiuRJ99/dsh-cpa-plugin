@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { CpaAccount } from './protocol.ts'
 import { CpaClient } from './cpa-client.ts'
 import {
@@ -17,7 +18,7 @@ import {
 type Props = PropsRuntime<'conversation.input.left'> & PropsLocale<'dsh-cpa'> & {
   cpa: CpaClient
   directory: SnapshotStore<ModelDirectoryState>
-  sessionId: string
+  sessionId: SessionId
 }
 
 /** Read-only current-account indicator with a model-scoped account switcher. */

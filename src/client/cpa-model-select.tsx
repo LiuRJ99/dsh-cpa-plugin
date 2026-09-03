@@ -3,7 +3,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import type { ModelProviderGroup, ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ModelCatalogModel } from '@deepseek-ai/dsh-client-connection/client'
+import type { ModelCatalogModel } from '@deepseek-ai/dsh-api-session-controller/types'
 import {
   IconCheckOutline16,
   IconChevronDownOutline14,
@@ -11,7 +11,9 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from '@deepseek-ai/dsh-client-ui-model-selection/client'
-import type { SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { UseChat } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import { hasFastSpeedCapability, type CpaClient } from './cpa-client.ts'
 import { accountAvailability } from './cpa-account-display.ts'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
@@ -30,8 +32,9 @@ interface EffortChoice {
 
 interface CpaModelSelectInjected extends ModelSelectInjected {
   cpa: CpaClient
-  sessionId: string
+  sessionId: SessionId
   session?: SessionFace
+  useChat: UseChat
 }
 
 type Props = CpaModelSelectInjected & { locked: boolean } & PropsLocale<'dsh-cpa'>
@@ -43,7 +46,7 @@ interface DisplayGroup {
   models: ModelCatalogModel[]
 }
 
-export function CpaModelSelect({ locked, available, directory, load, select, cpa, sessionId, session, t }: Props) {
+export function CpaModelSelect({ locked, available, directory, load, select, cpa, sessionId, session, useChat, t }: Props) {
   const state = useSyncExternalStore(
     listener => directory.subscribe(listener),
     () => directory.getSnapshot(),
@@ -52,6 +55,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
     listener => cpa.store.subscribe(listener),
     () => cpa.store.getSnapshot(),
   )
+  const chatNodes = useChat(snapshot => snapshot.legacy.nodes)
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -62,7 +66,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
     listener => session?.subscribe(listener) ?? (() => {}),
     () => session !== undefined && snapshotHasImages(session.getSnapshot()),
     () => false,
-  )
+  ) || chatNodes.some(node => hasImageContent((node as { content?: unknown }).content))
 
   const choices = useMemo(() => state.groups.flatMap((group: ModelProviderGroup) => group.models.map((model: ModelCatalogModel) => ({
     group,
@@ -326,8 +330,7 @@ function onKeyDown(setPane: (pane: Pane) => void, pane: Pane, close: () => void)
 }
 
 function snapshotHasImages(snapshot: ReturnType<SessionFace['getSnapshot']>): boolean {
-  return snapshot.nodes.some(node => hasImageContent((node as { content?: unknown }).content))
-    || snapshot.queue.some(item => hasImageContent(item.content))
+  return snapshot.queue.some(item => hasImageContent(item.content))
 }
 
 function hasImageContent(value: unknown): boolean {
@@ -395,7 +398,7 @@ function familyLabel(family: ModelFamily, t: Props['t']): string {
   }
 }
 
-async function ensureDefaultAccountForModel(cpa: CpaClient, sessionId: string, modelId: string): Promise<void> {
+async function ensureDefaultAccountForModel(cpa: CpaClient, sessionId: SessionId, modelId: string): Promise<void> {
   const accounts = await cpa.loadAccounts()
   const selected = cpa.selected(sessionId)
   const current = accounts.find(account => account.authIndex === selected)
@@ -456,5 +459,5 @@ function supportsReasoningEffort(
   model: ModelCatalogModel,
   effort: string,
 ): boolean {
-  return model.reasoning?.efforts.some(level => level.id === effort) ?? false
+  return model.reasoning?.efforts.some((level: ModelReasoningEffort) => level.id === effort) ?? false
 }

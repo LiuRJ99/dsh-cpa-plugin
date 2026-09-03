@@ -22,7 +22,7 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
       assert.equal(id, 'react')
       return {}
     })
-    assert.deepEqual(plugin.inject, ['connection', 'remote', 'slots', 'locale', 'settingsScope'])
+    assert.deepEqual(plugin.inject, ['connection', 'remote', 'remote.session', 'slots', 'locale', 'settingsScope'])
 
     const registrations = []
     const injections = []
@@ -197,7 +197,7 @@ test('discover then save preserves image-only metadata and hides the discovered 
     {
       react: { useState() {}, useSyncExternalStore() {} },
       'react/jsx-runtime': { jsx() {}, jsxs() {}, Fragment: Symbol.for('fragment') },
-      '@deepseek-ai/dsh-client-runtime/client': {
+      '@deepseek-ai/dsh-client-store': {
         createSnapshotStore(initial) {
           let snapshot = initial
           return {
@@ -215,68 +215,79 @@ test('discover then save preserves image-only metadata and hides the discovered 
 
   const mutateRequests = []
   let revision = 1
-  const ok = (value) => ({ result: { ok: true, value } })
-  const api = {
-    settings: {
-      async describe() {
-        return ok({
-          writable: true,
-          namespaces: [{
-            ns: 'llm-pi-ai',
-            revision,
-            value: {
-              providers: {
-                CLIProxyAPI: {
-                  api: 'openai-responses',
-                  baseURL: 'http://127.0.0.1:8317/v1',
-                  apiKeyEnv: 'CPA_MODEL_API_KEY',
-                  models: [{
-                    id: 'gemini-3.1-flash-lite',
-                    name: 'Gemini Lite',
-                    reasoningEfforts: { off: null, low: 'low' },
-                  }],
-                },
-              },
-            },
-          }],
-        })
-      },
-      async mutate(request) {
-        mutateRequests.push(request)
-        revision += 1
-        return ok({
-          ns: 'llm-pi-ai',
-          revision,
-          value: {
-            providers: {
-              CLIProxyAPI: {
-                api: 'openai-responses',
-                baseURL: 'http://127.0.0.1:8317/v1',
-                apiKeyEnv: 'CPA_MODEL_API_KEY',
-              },
-            },
-          },
-        })
+  let namespace = {
+    providers: {
+      CLIProxyAPI: {
+        api: 'openai-responses',
+        baseURL: 'http://127.0.0.1:8317/v1',
+        apiKeyEnv: 'CPA_MODEL_API_KEY',
+        models: [{
+          id: 'gemini-3.1-flash-lite',
+          name: 'Gemini Lite',
+          reasoningEfforts: { off: null, low: 'low' },
+        }],
       },
     },
-    credentials: {
-      async describe() {
-        return ok({ credentials: { CPA_MODEL_API_KEY: { configured: true, writable: true } } })
-      },
+  }
+  const scopeListeners = []
+  const setPath = (root, path, value) => {
+    let target = root
+    for (const key of path.slice(0, -1)) target = target[key] ??= {}
+    target[path[path.length - 1]] = value
+  }
+  const deletePath = (root, path) => {
+    let target = root
+    for (const key of path.slice(0, -1)) {
+      target = target[key]
+      if (target === undefined || target === null) return
+    }
+    delete target[path[path.length - 1]]
+  }
+  const settings = {
+    getSnapshot() {
+      return { status: 'ready', value: namespace, revision, writable: true, mode: 'live' }
     },
-    llm: {
-      async discoverModels() {
-        return ok({
-          models: [{
+    subscribe(listener) {
+      scopeListeners.push(listener)
+      return () => {
+        const index = scopeListeners.indexOf(listener)
+        if (index >= 0) scopeListeners.splice(index, 1)
+      }
+    },
+    async mutate(ops, expectedRevision) {
+      assert.equal(expectedRevision, revision)
+      mutateRequests.push({ ops, expectedRevision })
+      const next = structuredClone(namespace)
+      for (const op of ops) {
+        if (op.op === 'set') setPath(next, op.path, structuredClone(op.value))
+        else deletePath(next, op.path)
+      }
+      namespace = next
+      revision += 1
+      for (const listener of [...scopeListeners]) listener()
+    },
+  }
+  const ctx = {
+    remote: {
+      credentials: {
+        async describe(refs) {
+          return { ok: true, value: Object.fromEntries(refs.map((ref) => [ref, { configured: true, writable: true }])) }
+        },
+        async set() {
+          return { ok: true, value: undefined }
+        },
+      },
+      llm: {
+        async discoverModels(settingsNs, request) {
+          assert.equal(settingsNs, 'llm-cliproxyapi')
+          assert.equal(request.baseURL, 'http://127.0.0.1:8317/v1')
+          return { ok: true, value: [{
             id: 'gpt-image-2',
             name: 'GPT Image 2',
             contextWindow: 32000,
             maxTokens: 1,
-            imageGeneration: true,
-            routeKind: 'image',
-            upstreamPath: '/v1/images/generations',
-          }],
-        })
+          }] }
+        },
       },
     },
   }
@@ -291,7 +302,7 @@ test('discover then save preserves image-only metadata and hides the discovered 
     },
   }
 
-  const controller = new CpaModelSettingsController(api, cpa)
+  const controller = new CpaModelSettingsController(ctx, settings, cpa)
   const face = controller.inject()
   await waitFor(() => face.hooks.cpaModelSettings.getSnapshot().loading === false)
 
@@ -323,9 +334,6 @@ test('discover then save preserves image-only metadata and hides the discovered 
     contextWindow: 32000,
     maxTokens: 1,
     reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
-    imageGeneration: true,
-    routeKind: 'image',
-    upstreamPath: '/v1/images/generations',
   })
 })
 
