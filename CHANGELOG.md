@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+
+- **Browser auto-refresh actually reaches the UI (Web 端自动刷新生效)**: the Host refreshed the model catalog and account/quota snapshot on its own timer, but the result only updated the Host's in-memory account cache — nothing pushed it to the Web client, so Settings and the composer indicator showed stale quota/status until a manual refresh. A new `CpaAutoRefresh` driver polls the Host's cached `/cpa accounts` snapshot on the configured interval (`5m/30m/1h/3h/5h`, Manual disables it), updating the shared client store so Settings cards and the composer account indicator stay current without user interaction. Interval changes re-arm the next tick immediately; background pull failures are silent and retried on the next tick; the driver is disposed with the client context.
+
 ## [0.4.0] - 2026-08-25
 
 ### Features

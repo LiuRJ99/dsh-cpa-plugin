@@ -105,6 +105,26 @@ export class CpaClient {
     }
   }
 
+  /**
+   * Silently synchronize with the Host-side account snapshot.
+   *
+   * The Host refreshes the model catalog and account/quota data on its own
+   * periodic timer (see the Host apply timer loop), but the result lives only
+   * in the Host's memory cache. Background polling calls this instead of
+   * `loadAccounts()` so no loading flash or error banner interrupts the
+   * composer or Settings UI when the pull fails or the endpoint is briefly
+   * offline; the next tick simply retries.
+   */
+  async pullAccounts(): Promise<readonly CpaAccount[]> {
+    try {
+      const value = await this.call<CpaAccountsView>('accounts', {})
+      return this.applyAccounts(value, false)
+    } catch {
+      // Keep the previous snapshot visible; the next auto-refresh tick retries.
+      return this.store.getSnapshot().accounts
+    }
+  }
+
   /** Unified refresh: synchronize the model catalog and account quota snapshot. */
   async refresh(): Promise<readonly CpaAccount[]> {
     // A refresh can complete the provider profile bootstrap that supplies the

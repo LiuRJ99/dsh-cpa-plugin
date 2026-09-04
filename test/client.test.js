@@ -503,6 +503,159 @@ test('accountWindowStats and accountCumulativeStats extract correct metrics', as
   assert.equal(cumulativeStats2.hasRecords, false)
 })
 
+test('CpaAutoRefresh polls the Host snapshot at the configured interval and re-arms', async () => {
+  const { CpaAutoRefresh } = await loadTsModule(
+    new URL('../src/client/cpa-auto-refresh.ts', import.meta.url),
+    { './cpa-client.ts': {} },
+  )
+
+  const calls = []
+  let state = { refreshIntervalMs: 300000, managementKeyConfigured: true }
+  const listeners = new Set()
+  const source = {
+    store: {
+      getSnapshot() { return state },
+      subscribe(listener) {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    },
+    async pullAccounts() {
+      calls.push('pull')
+    },
+  }
+
+  const scheduled = []
+  const schedule = (callback, delay) => {
+    const row = { callback, delay, cancelled: false, pending: true }
+    scheduled.push(row)
+    return row
+  }
+  const cancel = (row) => { row.cancelled = true; row.pending = false }
+
+  const driver = new CpaAutoRefresh(source, schedule, cancel)
+  assert.equal(scheduled.length, 1)
+  assert.equal(scheduled[0].delay, 300000)
+
+  // Firing the timer pulls once and re-arms with the same delay.
+  const first = scheduled[0]
+  first.pending = false
+  first.callback()
+  await waitFor(() => calls.length === 1 && scheduled.some(row => row.pending))
+  assert.equal(calls.length, 1)
+  assert.equal(scheduled.filter(row => row.pending).length, 1)
+  assert.equal(scheduled.filter(row => row.pending)[0].delay, 300000)
+
+  // A store change re-arms: manual mode (0) stops polling...
+  state = { refreshIntervalMs: 0, managementKeyConfigured: true }
+  for (const listener of [...listeners]) listener()
+  assert.equal(scheduled.filter(row => row.pending).length, 0)
+  const before = calls.length
+
+  // ...and returning to 5m starts a fresh timer without an immediate pull.
+  state = { refreshIntervalMs: 300000, managementKeyConfigured: true }
+  for (const listener of [...listeners]) listener()
+  assert.equal(calls.length, before)
+  const pending = scheduled.filter(row => row.pending)
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].delay, 300000)
+
+  // An unconfigured management key suppresses polling entirely.
+  state = { refreshIntervalMs: 300000, managementKeyConfigured: false }
+  for (const listener of [...listeners]) listener()
+  assert.equal(scheduled.filter(row => row.pending).length, 0)
+
+  // Interval changes cancel the previous timer before arming the new one.
+  state = { refreshIntervalMs: 1800000, managementKeyConfigured: true }
+  for (const listener of [...listeners]) listener()
+  const armed = scheduled.filter(row => row.pending)
+  assert.equal(armed.length, 1)
+  assert.equal(armed[0].delay, 1800000)
+
+  // dispose stops future polling and cancels the pending timer.
+  driver.dispose()
+  assert.equal(scheduled.filter(row => row.pending).length, 0)
+  state = { refreshIntervalMs: 300000, managementKeyConfigured: true }
+  for (const listener of [...listeners]) listener()
+  assert.equal(scheduled.filter(row => row.pending).length, 0)
+})
+
+test('CpaAutoRefresh keeps polling when a pull fails and never overlaps ticks', async () => {
+  const { CpaAutoRefresh } = await loadTsModule(
+    new URL('../src/client/cpa-auto-refresh.ts', import.meta.url),
+    { './cpa-client.ts': {} },
+  )
+
+  const listeners = new Set()
+  let mode = 'ok'
+  let resolvePull
+  let pullCount = 0
+  const source = {
+    store: {
+      getSnapshot() {
+        return { refreshIntervalMs: 1000, managementKeyConfigured: true }
+      },
+      subscribe(listener) {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    },
+    pullAccounts() {
+      pullCount += 1
+      if (mode === 'slow') return new Promise((resolve) => { resolvePull = resolve })
+      if (mode === 'fail') return Promise.reject(new Error('endpoint offline'))
+      return Promise.resolve()
+    },
+  }
+
+  const scheduled = []
+  const schedule = (callback, delay) => {
+    const row = { callback, delay, cancelled: false, pending: true }
+    scheduled.push(row)
+    return row
+  }
+  const cancel = (row) => { row.cancelled = true; row.pending = false }
+
+  const driver = new CpaAutoRefresh(source, schedule, cancel)
+  assert.equal(scheduled.length, 1)
+  assert.equal(pullCount, 0)
+
+  // A failed pull must still re-arm (no dead driver, no unhandled rejection).
+  mode = 'fail'
+  const first = scheduled.find(row => row.pending)
+  first.pending = false
+  first.callback()
+  await waitFor(() => pullCount === 1)
+  await waitFor(() => scheduled.some(row => row.pending && row !== first))
+  assert.equal(scheduled.filter(row => row.pending).length, 1)
+  assert.equal(pullCount, 1)
+
+  // Overlapping ticks are coalesced: fire while a pull is in flight.
+  mode = 'slow'
+  const active = scheduled.find(row => row.pending)
+  active.pending = false
+  active.callback()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(pullCount, 2)
+  // The in-flight pull means `running` is true, so a manual re-fire is a no-op.
+  active.callback()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(pullCount, 2)
+  // Re-arm only happens after the pull settles.
+  assert.equal(scheduled.filter(row => row.pending).length, 0)
+  resolvePull()
+  await waitFor(() => scheduled.some(row => row.pending))
+  assert.equal(scheduled.filter(row => row.pending).length, 1)
+  driver.dispose()
+})
+
+test('CpaClient.pullAccounts silently applies Host snapshots without loading state', async () => {
+  const facade = await readFile(new URL('../src/client/cpa-client.ts', import.meta.url), 'utf8')
+  assert.match(facade, /async pullAccounts\(\)/)
+  assert.match(facade, /'accounts', \{\}\)/)
+  assert.doesNotMatch(facade, /pullAccounts[\s\S]{0,400}state\.status = 'loading'/)
+})
+
 async function loadTsModule(url, requireMap) {
   const source = await readFile(url, 'utf8')
   const compiled = ts.transpileModule(source, {

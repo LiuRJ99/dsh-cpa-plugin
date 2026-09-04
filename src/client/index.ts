@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import { CpaAutoRefresh } from './cpa-auto-refresh.ts'
 import type { CpaLocaleKey } from './locales.ts'
 import { CpaAccountIndicator } from './cpa-account-indicator.tsx'
 import { CpaModelSelect } from './cpa-model-select.tsx'
@@ -49,6 +50,14 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
 
   const connection = ctx.get('connection') as unknown as ConnectionHandle
   const cpa = new CpaClient(connection.rpc)
+  // Drive the Host's cached snapshot into the browser at the configured
+  // interval. The Host refreshes on its own timer, but its results never
+  // reach the Web client on their own; this effect disposes with the context.
+  let autoRefresh: CpaAutoRefresh | undefined
+  ctx.effect(() => {
+    autoRefresh = new CpaAutoRefresh(cpa)
+    return () => autoRefresh?.dispose()
+  }, 'dsh-cpa: auto refresh driver')
   const capabilityProvider: ModelCapabilityProvider = {
     listModelCapabilities: () => cpa.listModelCapabilities(),
   }
