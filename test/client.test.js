@@ -503,6 +503,174 @@ test('accountWindowStats and accountCumulativeStats extract correct metrics', as
   assert.equal(cumulativeStats2.hasRecords, false)
 })
 
+test('accountQuotaProgress scopes Antigravity pool windows to the selected model family', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { accountQuotaProgress, accountAvailability } = displayModule
+  const t = (key) => key
+  // The TS loader returns arrays from a separate realm; compare JSON shapes.
+  const shaped = (progress) => JSON.stringify(progress.map(entry => [entry.key, entry.percent]))
+
+  // Antigravity-style account quota split into model-family pools, each with
+  // its own five-hour and weekly windows (mirrors CPA auth-files payload).
+  const account = {
+    status: 'active',
+    quota: {
+      windows: [
+        { window: 'weekly', group: 'Gemini Models', remaining: 79, total: 100, unit: '%' },
+        { window: 'five_hour', group: 'Gemini Models', remaining: 100, total: 100, unit: '%' },
+        { window: 'weekly', group: 'Claude and GPT models', remaining: 100, total: 100, unit: '%' },
+        { window: 'five_hour', group: 'Claude and GPT models', remaining: 100, total: 100, unit: '%' },
+      ],
+    },
+  }
+
+  // Gemini model: only the Gemini pool windows, weekly 79%.
+  assert.equal(shaped(accountQuotaProgress(account.quota, t, 'gemini-3-flash')), JSON.stringify([
+    ['five_hour', 100],
+    ['weekly', 79],
+  ]))
+
+  // Claude model: only the Claude/GPT pool windows, weekly 100%.
+  assert.equal(shaped(accountQuotaProgress(account.quota, t, 'claude-sonnet-4-6')), JSON.stringify([
+    ['five_hour', 100],
+    ['weekly', 100],
+  ]))
+
+  // GPT model shares the Claude/GPT pool.
+  assert.equal(shaped(accountQuotaProgress(account.quota, t, 'gpt-5.6-luna')), JSON.stringify([
+    ['five_hour', 100],
+    ['weekly', 100],
+  ]))
+
+  // Without a model (settings page) every group window remains visible.
+  assert.equal(shaped(accountQuotaProgress(account.quota, t)), JSON.stringify([
+    ['five_hour', 100],
+    ['weekly', 79],
+  ]))
+
+  // A Claude pool that is exhausted must not flag a Gemini session as low.
+  const exhaustedClaude = {
+    status: 'active',
+    quota: {
+      windows: [
+        { window: 'weekly', group: 'Gemini Models', remaining: 90, total: 100, unit: '%' },
+        { window: 'weekly', group: 'Claude and GPT models', remaining: 0, total: 100, unit: '%', exceeded: true },
+      ],
+    },
+  }
+  assert.equal(accountAvailability(exhaustedClaude, 'gemini-3-flash'), 'available')
+  assert.equal(accountAvailability(exhaustedClaude, 'claude-opus-4-6'), 'quota-low')
+
+  // Model scope with an unknown pool label falls back to the whole set.
+  const unknownGroup = {
+    status: 'active',
+    quota: { windows: [{ window: 'weekly', group: 'Mystery Models', remaining: 100, total: 100, unit: '%' }] },
+  }
+  assert.equal(shaped(accountQuotaProgress(unknownGroup.quota, t, 'gemini-3-flash')), JSON.stringify([
+    ['weekly', 100],
+  ]))
+  assert.equal(accountAvailability(unknownGroup, 'gemini-3-flash'), 'available')
+})
+
+test('modelFamilyOf classifies CPA model ids consistently with the picker', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { modelFamilyOf } = displayModule
+  assert.equal(modelFamilyOf('gpt-5.6-luna'), 'gpt')
+  assert.equal(modelFamilyOf('claude-sonnet-4-6'), 'claude')
+  assert.equal(modelFamilyOf('claude-opus-4-6-thinking'), 'claude')
+  assert.equal(modelFamilyOf('gemini-3-flash'), 'gemini')
+  assert.equal(modelFamilyOf('gemini-3.1-pro-low'), 'gemini')
+  assert.equal(modelFamilyOf('deepseek-v4-flash'), 'deepseek')
+  assert.equal(modelFamilyOf('glm-5.2'), 'other')
+  assert.equal(modelFamilyOf(undefined), 'other')
+  assert.equal(modelFamilyOf(''), 'other')
+})
+
+test('accountQuotaPercent prefers five-hour and falls back to weekly only when absent or 0%', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { accountQuotaPercent } = displayModule
+
+  // Both windows: five-hour wins regardless of weekly being smaller.
+  assert.equal(accountQuotaPercent([
+    { key: 'five_hour', label: '5小时', percent: 100 },
+    { key: 'weekly', label: '周限额', percent: 61 },
+  ]), 100)
+
+  // Five-hour exhausted (0%): fall back to weekly.
+  assert.equal(accountQuotaPercent([
+    { key: 'five_hour', label: '5小时', percent: 0 },
+    { key: 'weekly', label: '周限额', percent: 61 },
+  ]), 61)
+
+  // Weekly only.
+  assert.equal(accountQuotaPercent([
+    { key: 'weekly', label: '周限额', percent: 79 },
+  ]), 79)
+
+  // Five-hour only.
+  assert.equal(accountQuotaPercent([
+    { key: 'five_hour', label: '5小时', percent: 100 },
+  ]), 100)
+
+  // No windows with percents.
+  assert.equal(accountQuotaPercent([]), undefined)
+  assert.equal(accountQuotaPercent([{ key: 'overall', label: '额度' }]), undefined)
+})
+
+test('accountAvailability treats transient CPA error status as usable when quota is healthy', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { accountAvailability } = displayModule
+
+  // A healthy account whose last probe failed (status=error) is still usable.
+  assert.equal(accountAvailability({
+    status: 'error',
+    disabled: false,
+    unavailable: false,
+    quota: { remaining: 100, total: 100, unit: '%' },
+  }), 'available')
+  assert.equal(accountAvailability({
+    status: 'failed',
+    statusMessage: 'upstream probe failed',
+    disabled: false,
+    unavailable: false,
+    quota: { remaining: 100, total: 100, unit: '%' },
+  }), 'available')
+
+  // Explicit credential-level failures remain unavailable.
+  assert.equal(accountAvailability({
+    status: 'expired',
+    disabled: false,
+    unavailable: false,
+    quota: { remaining: 100, total: 100, unit: '%' },
+  }), 'unavailable')
+  assert.equal(accountAvailability({
+    status: 'active',
+    disabled: true,
+    unavailable: false,
+    quota: { remaining: 100, total: 100, unit: '%' },
+  }), 'unavailable')
+
+  // An exhausted quota still reports quota-low even when status is error.
+  assert.equal(accountAvailability({
+    status: 'error',
+    disabled: false,
+    unavailable: false,
+    quota: { remaining: 0, total: 100, unit: '%', exceeded: true },
+  }), 'quota-low')
+
+  // A historical 429 payload in statusMessage must not flag a healthy account.
+  assert.equal(accountAvailability({
+    status: 'error',
+    statusMessage: '{"error":{"code":429,"message":"Individual quota reached. Please upgrade your subscription.","details":[{"reason":"QUOTA_EXHAUSTED"}]}}',
+    disabled: false,
+    unavailable: false,
+    quota: { remaining: 78.78, total: 100, unit: '%', windows: [
+      { window: 'five_hour', group: 'Gemini Models', remaining: 100, total: 100, unit: '%' },
+      { window: 'weekly', group: 'Gemini Models', remaining: 78.78, total: 100, unit: '%' },
+    ] },
+  }), 'available')
+})
+
 test('CpaAutoRefresh polls the Host snapshot at the configured interval and re-arms', async () => {
   const { CpaAutoRefresh } = await loadTsModule(
     new URL('../src/client/cpa-auto-refresh.ts', import.meta.url),

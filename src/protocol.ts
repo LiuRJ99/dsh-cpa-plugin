@@ -56,6 +56,12 @@ export interface CpaAccount {
   status: string
   statusMessage?: string
   quota?: CpaQuota
+  /**
+   * True when the latest Host quota refresh failed (e.g. the upstream usage
+   * endpoint was unavailable) so the value in `quota`, if any, is the previous
+   * successful snapshot rather than a freshly confirmed number.
+   */
+  quotaStale?: boolean
   disabled: boolean
   unavailable: boolean
   nextRetryAfter?: string

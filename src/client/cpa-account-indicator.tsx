@@ -10,6 +10,7 @@ import {
   accountAvailabilityLabel,
   accountIdentity,
   accountLabel,
+  accountQuotaPercent,
   accountQuotaProgress,
   accountWindowStats,
   type AccountQuotaProgress,
@@ -82,30 +83,28 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
 
   const liveSupported = supported?.map(account => cpaState.accounts.find(currentAccount => currentAccount.authIndex === account.authIndex) ?? account) ?? []
   if (model === undefined || supported === undefined || liveSupported.length === 0 || loading) return null
-  const account = currentAccount(liveSupported, cpa.selected(sessionId))
+  const account = currentAccount(liveSupported, model, cpa.selected(sessionId))
   if (account === undefined) return null
 
-  const availability = accountAvailability(account)
-  const availabilityLabel = accountAvailabilityLabel(account, t)
-  const progress = accountQuotaProgress(account.quota, t)
-  const primary = progress[0]
-  const percent = primary?.percent
-  const quotaLabel = primary === undefined
-    ? t('account.quotaUnknown')
-    : percent === undefined
-      ? primary.label
-      : `${primary.label} ${Math.round(percent)}%`
-  const shortQuotaLabel = percent !== undefined
+  const availability = accountAvailability(account, model)
+  const availabilityLabel = accountAvailabilityLabel(account, t, model)
+  const progress = accountQuotaProgress(account.quota, t, model)
+  // Composer surfaces one number: five-hour window first, weekly only when
+  // the five-hour window is absent or exhausted (0%).
+  const percent = accountQuotaPercent(progress)
+  const quotaLabel = percent !== undefined
     ? `${Math.round(percent)}%`
-    : primary !== undefined
-      ? primary.label
-      : quotaLabel
+    : progress.length === 0
+      ? t('account.quotaUnknown')
+      : progress.map(formatProgress).join(' · ')
+  const shortQuotaLabel = quotaLabel
+  const staleMarker = account.quotaStale === true ? ` (${t('account.quotaStale')})` : ''
   const title = [
     accountLabel(account),
     accountIdentity(account),
     ...progress.map(formatProgress),
     availabilityLabel,
-  ].join(' · ')
+  ].join(' · ') + staleMarker
 
   const choose = (next: CpaAccount): void => {
     setError(null)
@@ -137,7 +136,7 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
       </button>
       {open ? (
         <div className="dsh-cpa-account-menu" role="menu" aria-label={t('account.switcher')}>
-          {liveSupported.map(option => <AccountOption key={option.authIndex} account={option} selected={option.authIndex === account.authIndex} onChoose={choose} t={t} />)}
+          {liveSupported.map(option => <AccountOption key={option.authIndex} account={option} model={model} selected={option.authIndex === account.authIndex} onChoose={choose} t={t} />)}
           {error !== null ? <div className="dsh-cpa-account-menu-error" role="alert">{error}</div> : null}
         </div>
       ) : null}
@@ -147,19 +146,20 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
 
 function AccountOption({
   account,
+  model,
   selected,
   onChoose,
   t,
 }: {
   account: CpaAccount
+  model: string
   selected: boolean
   onChoose: (account: CpaAccount) => void
   t: Props['t']
 }) {
-  const availability = accountAvailability(account)
-  const progress = accountQuotaProgress(account.quota, t)
-  const primary = progress[0]
-  const percent = primary?.percent
+  const availability = accountAvailability(account, model)
+  const progress = accountQuotaProgress(account.quota, t, model)
+  const percent = accountQuotaPercent(progress)
   const stats = accountWindowStats(account)
   return (
     <button
@@ -178,18 +178,20 @@ function AccountOption({
         </strong>
         <small>{accountIdentity(account)}</small>
       </span>
-      <span className="dsh-cpa-account-option-quota">{primary === undefined ? t('account.quotaUnknown') : primary.percent === undefined ? primary.label : `${Math.round(primary.percent)}%`}</span>
+      <span className="dsh-cpa-account-option-quota">
+        {percent === undefined ? t('account.quotaUnknown') : `${Math.round(percent)}%`}
+      </span>
       {selected ? <span className="dsh-cpa-account-option-check" aria-hidden="true">✓</span> : null}
     </button>
   )
 }
 
-function currentAccount(accounts: readonly CpaAccount[], selected: string | undefined): CpaAccount | undefined {
+function currentAccount(accounts: readonly CpaAccount[], model: string, selected: string | undefined): CpaAccount | undefined {
   if (selected !== undefined) {
     const explicit = accounts.find(account => account.authIndex === selected)
     if (explicit !== undefined) return explicit
   }
-  return accounts.find(account => accountAvailability(account) === 'available') ?? accounts[0]
+  return accounts.find(account => accountAvailability(account, model) === 'available') ?? accounts[0]
 }
 
 function modelListContains(models: readonly string[], modelId: string): boolean {

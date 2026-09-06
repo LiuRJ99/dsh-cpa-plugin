@@ -203,6 +203,18 @@ test('bundled Host artifact keeps the CPA image service but not the OpenAI Image
   assert.match(imageServiceBundle, /gpt-image-2/u)
 })
 
+test('Antigravity quota summary prefers the daily endpoint that matches the CPA panel', async () => {
+  const hostSource = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
+  const daily = 'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary'
+  const plain = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary'
+  const dailyIndex = hostSource.indexOf(daily)
+  const plainIndex = hostSource.indexOf(plain)
+  assert.ok(dailyIndex >= 0, 'daily quota summary URL must be referenced')
+  assert.ok(plainIndex >= 0, 'plain cloudcode URL kept as fallback')
+  assert.ok(dailyIndex < plainIndex, 'daily endpoint must be tried before the plain one')
+  assert.match(hostSource, /daily-cloudcode-pa\.sandbox\.googleapis\.com\/v1internal:retrieveUserQuotaSummary/u)
+})
+
 test('parses Codex five-hour and weekly quota windows together', () => {
   const result = parseCodexQuota({
     plan_type: 'pro',

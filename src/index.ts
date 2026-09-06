@@ -636,10 +636,14 @@ async function fetchAccounts(
           ...result.quota === undefined ? {} : { quota: result.quota },
         }
       } catch {
-        // Quota is an optional, provider-specific refresh. Keep the CPA
-        // heartbeat/status record visible when an upstream usage endpoint is
-        // unavailable or a provider has not implemented it.
-        return account
+        // A quota refresh can fail transiently (e.g. the upstream usage
+        // endpoint returns 502/429). The account record stays visible, but
+        // mark the previous snapshot stale so the client never mistakes it
+        // for a freshly confirmed number.
+        return {
+          ...account,
+          quotaStale: true,
+        }
       }
     }))
     : accounts
@@ -656,6 +660,35 @@ interface AccountQuotaResult {
   quota?: CpaQuota
 }
 
+/** Try each Antigravity quota-summary upstream in order and return the first success. */
+async function fetchAntigravityQuotaSummary(
+  urls: readonly string[],
+  config: Config,
+  readCredential: (ref: string) => Promise<string | undefined>,
+  account: Pick<CpaAccount, 'authIndex' | 'projectId'>,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<unknown> {
+  let lastError: unknown
+  for (const url of urls) {
+    try {
+      return await callUpstream(
+        config,
+        readCredential,
+        account.authIndex,
+        'POST',
+        url,
+        headers,
+        JSON.stringify({ project: account.projectId }),
+        signal,
+      )
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError
+}
+
 async function fetchAccountQuota(
   config: Config,
   readCredential: (ref: string) => Promise<string | undefined>,
@@ -669,18 +702,19 @@ async function fetchAccountQuota(
       'Content-Type': 'application/json',
       'User-Agent': 'antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)',
     }
+    // The quota summary must come from the same daily endpoint the CPA
+    // management panel uses: `cloudcode-pa.googleapis.com` reports stale
+    // bucket fractions (weekly 79% vs the real 17%) while
+    // `daily-cloudcode-pa.googleapis.com` matches the panel. Keep the plain
+    // endpoint as a fallback for older CPA service regions.
+    const ANTIGRAVITY_QUOTA_URLS = [
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+    ]
     const quotaRequest = account.projectId === undefined
       ? Promise.resolve<unknown>({})
-      : callUpstream(
-        config,
-        readCredential,
-        account.authIndex,
-        'POST',
-        'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
-        headers,
-        JSON.stringify({ project: account.projectId }),
-        signal,
-      )
+      : fetchAntigravityQuotaSummary(ANTIGRAVITY_QUOTA_URLS, config, readCredential, account, headers, signal)
     const subscriptionRequest = callUpstream(
       config,
       readCredential,

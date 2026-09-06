@@ -503,10 +503,17 @@ function mergeAccountSnapshots(previous: readonly CpaAccount[], next: readonly C
   return next.map(account => {
     const old = oldByIndex.get(account.authIndex)
     if (old === undefined) return account
+    // A quota that the Host failed to refresh stays visible (so the composer
+    // does not flash empty), but it is explicitly stale: the client must not
+    // treat it as a fresh number and should surface the staleness.
+    const quotaStale = account.quotaStale === true
     return {
       ...account,
+      ...(quotaStale ? { quotaStale: true as const } : {}),
       ...account.plan === undefined && old.plan !== undefined ? { plan: old.plan } : {},
-      ...account.quota === undefined && old.quota !== undefined ? { quota: old.quota } : {},
+      ...account.quota === undefined && old.quota !== undefined && quotaStale
+        ? { quota: old.quota }
+        : {},
     }
   })
 }

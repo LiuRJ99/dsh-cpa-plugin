@@ -15,7 +15,7 @@ import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client
 import type { UseChat } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import { hasFastSpeedCapability, type CpaClient } from './cpa-client.ts'
-import { accountAvailability } from './cpa-account-display.ts'
+import { accountAvailability, modelFamilyOf, type ModelFamily } from './cpa-account-display.ts'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type { CpaSpeed } from './protocol.ts'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
@@ -375,17 +375,10 @@ function visibleModelsOf(models: readonly ModelCatalogModel[]): ModelCatalogMode
   return models.filter(model => !isImageOnlyModel(model.id))
 }
 
-type ModelFamily = 'gpt' | 'claude' | 'gemini' | 'deepseek' | 'other'
-
 const CPA_MODEL_FAMILY_ORDER: readonly ModelFamily[] = ['gpt', 'claude', 'gemini', 'deepseek', 'other']
 
 function familyOf(model: ModelCatalogModel): ModelFamily {
-  const value = `${model.id} ${model.name}`.toLowerCase()
-  if (/(gpt|codex|chatgpt|(?:^|[-_])o[134](?:$|[-_]))/.test(value)) return 'gpt'
-  if (value.includes('claude')) return 'claude'
-  if (value.includes('gemini')) return 'gemini'
-  if (value.includes('deepseek')) return 'deepseek'
-  return 'other'
+  return modelFamilyOf(`${model.id} ${model.name}`)
 }
 
 function familyLabel(family: ModelFamily, t: Props['t']): string {
@@ -402,12 +395,12 @@ async function ensureDefaultAccountForModel(cpa: CpaClient, sessionId: SessionId
   const accounts = await cpa.loadAccounts()
   const selected = cpa.selected(sessionId)
   const current = accounts.find(account => account.authIndex === selected)
-  const available = accounts.filter(account => accountAvailability(account) === 'available')
+  const available = accounts.filter(account => accountAvailability(account, modelId) === 'available')
   if (available.length === 0) return
 
   // Keep the current account first so changing models does not unexpectedly
   // rotate a healthy selection when that account supports the new model.
-  const ordered = current !== undefined && accountAvailability(current) === 'available'
+  const ordered = current !== undefined && accountAvailability(current, modelId) === 'available'
     ? [current, ...available.filter(account => account.authIndex !== current.authIndex)]
     : available
   const matches = await Promise.all(ordered.map(async account => {
@@ -420,7 +413,7 @@ async function ensureDefaultAccountForModel(cpa: CpaClient, sessionId: SessionId
     }
   }))
   const matching = matches.find(account => account !== undefined)
-  const currentAvailable = current !== undefined && accountAvailability(current) === 'available' ? current : undefined
+  const currentAvailable = current !== undefined && accountAvailability(current, modelId) === 'available' ? current : undefined
   const fallback = matching ?? currentAvailable ?? available[0]
   if (fallback !== undefined && fallback.authIndex !== selected) {
     await cpa.selectAccount(sessionId, fallback.authIndex, { persistDefault: false })
