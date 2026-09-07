@@ -1,0 +1,51 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck sources
+        run: npm run typecheck
+
+      - name: Typecheck image-generation contract
+        run: npm run typecheck:image-generation-contract
+
+      - name: Bundle generated artifacts
+        run: npm run bundle
+
+      - name: Verify generated artifacts are committed
+        run: git diff --exit-code -- client.js lib
+
+      - name: Check JavaScript and run check suite
+        run: npm run check
+
+      - name: Check composed client artifact
+        run: node --check lib/composed-client.js
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify package contents
+        run: npm pack --dry-run --ignore-scripts --no-audit --no-fund

@@ -95,6 +95,7 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
 
 test('client owns only its Settings slot and keeps the configuration accessible', async () => {
   const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
+  const composed = await readFile(new URL('../lib/composed-client.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /setInterval\s*\(/)
    assert.doesNotMatch(source, /refresh-quotas|refreshFrequency/)
    assert.match(source, /REFRESH_INTERVALS/)
@@ -110,8 +111,12 @@ test('client owns only its Settings slot and keeps the configuration accessible'
   assert.match(source, /expectedRevision/)
   assert.match(source, /scope\.subscribe\(/)
   assert.doesNotMatch(source, /remote\.\$on\('settings\/document-updated'/)
-  assert.match(source, /remote\.\$on\('credentials\/updated'/)
+  assert.match(source, /remote\.\$on\('credentials\/reference-updated'/)
   assert.match(source, /role: 'status'/)
+   assert.doesNotMatch(source, /remote\.\$on\('credentials\/updated'/)
+   assert.match(composed, /remote\.\$on\('credentials\/reference-updated'/)
+   assert.doesNotMatch(composed, /remote\.\$on\('credentials\/updated'/)
+
 })
 
 test('unified refresh keeps model and quota actions together', async () => {

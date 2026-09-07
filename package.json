@@ -101,7 +101,7 @@
     "@deepseek-ai/dsh-settings": "0.1.2-rc.1",
     "@deepseek-ai/dsh-timeout": "0.1.2-rc.1",
     "@deepseek-ai/dsh-util-values": "0.1.2-rc.1",
-    "@deepseek-ai/schemastery": "3.18.1",
+    "@deepseek-ai/schemastery": "3.18.2",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
     "tsdown": "^0.22.0",
