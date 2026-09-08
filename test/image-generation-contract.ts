@@ -1,8 +1,10 @@
 import { IMAGE_GENERATION_SERVICE } from '@LiuRJ99/dsh-cpa-plugin/image-generation'
 import type {
   CpaGeneratedImage,
+  CpaImageEditRequest,
   CpaImageGenerationRequest,
   CpaImageGenerationService,
+  CpaReferenceImage,
   ImageEngine,
 } from '@LiuRJ99/dsh-cpa-plugin/image-generation'
 
@@ -18,15 +20,33 @@ const generated: CpaGeneratedImage = {
   mediaType: 'image/png',
 }
 
+const reference: CpaReferenceImage = {
+  data: new Uint8Array([1]),
+  mediaType: 'image/png',
+}
+
+const editRequest: CpaImageEditRequest = {
+  engine,
+  prompt: 'edit consumer image',
+  referenceImages: [reference],
+  signal: new AbortController().signal,
+}
+
 const service: CpaImageGenerationService = {
   async generate(input) {
     const normalized: CpaImageGenerationRequest = input
     normalized.prompt satisfies string
     return generated
   },
+  async edit(input) {
+    const normalized: CpaImageEditRequest = input
+    normalized.referenceImages satisfies readonly CpaReferenceImage[]
+    return generated
+  },
 }
 
 service.generate(request) satisfies Promise<CpaGeneratedImage>
+service.edit?.(editRequest) satisfies Promise<CpaGeneratedImage> | undefined
 IMAGE_GENERATION_SERVICE satisfies 'dshCpaImageGeneration'
 
 type PublicContractModule = typeof import('@LiuRJ99/dsh-cpa-plugin/image-generation')

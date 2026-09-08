@@ -238,3 +238,13 @@ Provider change 先在独立 worktree 完成并产出可被下游导入的包。
 - Gemini 专属尺寸控制依赖 CLIProxyAPI 版本对 `image_config` 的支持；若 relay 版本过旧，仍可能退回默认尺寸，但插件不会因参数兼容性在本地预先失败。
 - 引擎级公共契约不会让下游选择任意未来模型；新增模型应在 CPA 内部补能力映射和测试。
 - 本地 relay 的成功只能证明当前本地配置和协议路径，不能证明所有 CPA 账号、上游供应商或生产部署均正确。
+
+## 12. Follow-up：参考图编辑扩展
+
+原始设计将参考图编辑列为 generation-only contract 的边界；本次后续实现保留原 `generate` 请求不变，并以可选 `edit` 方法向后兼容扩展：
+
+- `CpaReferenceImage` 只携带 Host 已解析的 `{ data, mediaType }`，Provider 不接触 DSH Attachment、路径或凭据。
+- GPT 调用 `/v1/images/edits` multipart；一张图使用 `image`，多张图使用 `image[]`。
+- Gemini 调用 `/v1/chat/completions`，将 prompt 和 data URL 图片放入 `messages[].content[]`，并继续使用 `modalities`/`image_config`。
+- 旧版 Provider 没有 `edit` 时，下游通过 feature detection 只注册 `generate_image`；不能假装支持编辑。
+- Gemini 的当前 CLIProxyAPI 代码具备通用多模态 wire path，但仍需要带认证的真实 edit smoke test，不能仅凭生成回归测试宣称多参考图已验证。

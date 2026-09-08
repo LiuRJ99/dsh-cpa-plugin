@@ -62,6 +62,88 @@ test('GPT maps engine to images/generations and decodes b64_json', async () => {
   assert.equal(image.mediaType, 'image/png')
 })
 
+test('GPT edits through images/edits multipart and preserves reference order', async () => {
+  const { calls, service } = createHarness({
+    fetchImpl: async () => new Response(JSON.stringify({
+      data: [{ b64_json: PNG_B64 }],
+    }), { status: 200 }),
+  })
+
+  const image = await service.edit({
+    engine: 'gpt',
+    prompt: 'put the red coat on the central person',
+    referenceImages: [
+      { data: PNG_BYTES, mediaType: 'image/png' },
+      { data: JPEG_BYTES, mediaType: 'image/jpeg' },
+    ],
+    size: '1024x1792',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(calls[0].url, 'http://cpa.example/v1/images/edits')
+  const form = calls[0].init.body
+  assert.equal(form instanceof FormData, true)
+  assert.equal(form.get('model'), 'gpt-image-2')
+  assert.equal(form.get('prompt'), 'put the red coat on the central person')
+  assert.equal(form.get('size'), '1024x1792')
+  assert.equal(form.getAll('image[]').length, 2)
+  assert.equal(new Headers(calls[0].init.headers).get('content-type'), null)
+  assert.deepEqual(image.data, PNG_BYTES)
+  assert.equal(image.mediaType, 'image/png')
+})
+
+test('Gemini edits send ordered data URL content parts and image output options', async () => {
+  const { calls, service } = createHarness({
+    fetchImpl: async () => new Response(JSON.stringify({
+      choices: [{
+        message: {
+          images: [{ image_url: { url: `data:image/jpeg;base64,${JPEG_B64}` } }],
+        },
+      }],
+    }), { status: 200 }),
+  })
+
+  const image = await service.edit({
+    engine: 'gemini',
+    prompt: 'replace the outfit and preserve the face',
+    referenceImages: [
+      { data: PNG_BYTES, mediaType: 'image/png' },
+      { data: JPEG_BYTES, mediaType: 'image/jpeg' },
+    ],
+    aspectRatio: '2:3',
+    imageSize: '2K',
+    signal: new AbortController().signal,
+  })
+
+  const body = JSON.parse(calls[0].init.body)
+  assert.equal(calls[0].url, 'http://cpa.example/v1/chat/completions')
+  assert.equal(body.model, 'gemini-3.1-flash-image')
+  assert.equal(body.modalities[0], 'image')
+  assert.deepEqual(body.image_config, { aspect_ratio: '2:3', image_size: '2K' })
+  assert.equal(body.messages[0].content[0].text, 'replace the outfit and preserve the face')
+  assert.equal(body.messages[0].content[1].image_url.url, `data:image/png;base64,${PNG_B64}`)
+  assert.equal(body.messages[0].content[2].image_url.url, `data:image/jpeg;base64,${JPEG_B64}`)
+  assert.deepEqual(image.data, JPEG_BYTES)
+  assert.equal(image.mediaType, 'image/jpeg')
+})
+
+test('image editing rejects an empty reference list before network access', async () => {
+  const { calls, service } = createHarness()
+  await assert.rejects(
+    service.edit({
+      engine: 'gpt',
+      prompt: 'edit',
+      referenceImages: [],
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assertLlmError(error, 'INVALID_REQUEST')
+      return true
+    },
+  )
+  assert.equal(calls.length, 0)
+})
+
 test('Gemini maps engine to chat completions and decodes message.images', async () => {
   const { calls, service } = createHarness({
     fetchImpl: async () => new Response(JSON.stringify({

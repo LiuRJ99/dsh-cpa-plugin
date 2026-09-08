@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+- Added an optional backward-compatible `CpaImageGenerationService.edit()` capability with provider-neutral reference image bytes. GPT uses CLIProxyAPI `/v1/images/edits`; Gemini uses multimodal `/v1/chat/completions` content parts and preserves the existing `generate()` path.
+
 ### Fixes
 
 - **Switcher popup labels the quota window behind each percentage (弹窗显示额度类别)**: the account-switcher menu showed a bare figure (e.g. `77%`) without saying which quota window it belonged to. Each option now renders the category of the surfaced percentage — `5h`/`5小时` (five-hour window) or `Weekly limit`/`周限额` (weekly) — above the value, so a weekly fallback after an exhausted five-hour window is no longer indistinguishable from a five-hour figure. The picked window mirrors `accountQuotaPercent` exactly via the new `accountQuotaPercentEntry` helper.

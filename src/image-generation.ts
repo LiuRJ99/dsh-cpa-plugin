@@ -8,6 +8,7 @@ const GEMINI_MODEL = 'gemini-3.1-flash-image'
 const SUPPORTED_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const)
 
 export type ImageEngine = 'gpt' | 'gemini'
+export type CpaImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 
 export interface CpaImageGenerationRequest {
   engine: ImageEngine
@@ -18,13 +19,31 @@ export interface CpaImageGenerationRequest {
   signal: AbortSignal
 }
 
+/** Provider-neutral image bytes resolved by the DSH Host. */
+export interface CpaReferenceImage {
+  data: Uint8Array
+  mediaType: CpaImageMediaType
+}
+
+export interface CpaImageEditRequest {
+  engine: ImageEngine
+  prompt: string
+  referenceImages: readonly CpaReferenceImage[]
+  aspectRatio?: string
+  imageSize?: string
+  size?: string
+  signal: AbortSignal
+}
+
 export interface CpaGeneratedImage {
   data: Uint8Array
-  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  mediaType: CpaImageMediaType
 }
 
 export interface CpaImageGenerationService {
   generate(request: CpaImageGenerationRequest): Promise<CpaGeneratedImage>
+  /** Optional for 0.4.x compatibility; present when the provider supports editing. */
+  edit?(request: CpaImageEditRequest): Promise<CpaGeneratedImage>
 }
 
 interface CpaImageGenerationRoute {
@@ -97,6 +116,64 @@ export function createCpaImageGenerationService(
       })
       return parseGeminiImage(response)
     },
+
+    async edit(request) {
+      if (request.signal.aborted) throw abortError()
+      const prompt = request.prompt.trim()
+      if (prompt === '') throw new LlmError('CPA image editing prompt must not be empty', 'INVALID_REQUEST')
+      if (request.engine !== 'gpt' && request.engine !== 'gemini') {
+        throw new LlmError(`Unsupported CPA image engine "${String(request.engine)}"`, 'INVALID_REQUEST')
+      }
+      const referenceImages = checkedReferenceImages(request.referenceImages)
+      const route = resolveRoute(request.engine)
+      if (route === undefined) throw new LlmError(`CPA image route for engine "${request.engine}" is unavailable`, 'INVALID_REQUEST')
+      const apiKey = await readRequiredCredential(readCredential, route.apiKeyEnv)
+
+      if (request.engine === 'gpt') {
+        if (request.aspectRatio !== undefined) {
+          throw new LlmError('CPA GPT image editing does not support aspectRatio', 'UNSUPPORTED_OPTION')
+        }
+        const form = new FormData()
+        const field = referenceImages.length === 1 ? 'image' : 'image[]'
+        referenceImages.forEach((image, index) => {
+          const bytes = new Uint8Array(image.data)
+          form.append(field, new Blob([bytes], { type: image.mediaType }), `reference-${index + 1}.${extensionOf(image.mediaType)}`)
+        })
+        form.append('model', GPT_MODEL)
+        form.append('prompt', prompt)
+        form.append('size', request.size ?? request.imageSize ?? '1024x1024')
+        form.append('quality', 'auto')
+        const response = await requestJson(fetchImpl, imageEditsURL(route.baseURL), {
+          method: 'POST',
+          signal: request.signal,
+          headers: cpaHeaders(apiKey, false),
+          body: form,
+        }, 'CPA image editing')
+        return parseGptImage(response, fetchImpl, request.signal, 'CPA image editing')
+      }
+
+      const imageConfig = geminiImageConfigOf(request)
+      const content = [
+        { type: 'text', text: prompt },
+        ...referenceImages.map(image => ({
+          type: 'image_url',
+          image_url: { url: imageDataURL(image) },
+        })),
+      ]
+      const response = await requestJson(fetchImpl, chatCompletionsURL(route.baseURL), {
+        method: 'POST',
+        signal: request.signal,
+        headers: cpaHeaders(apiKey),
+        body: JSON.stringify({
+          model: GEMINI_MODEL,
+          messages: [{ role: 'user', content }],
+          stream: false,
+          modalities: ['image'],
+          ...(imageConfig === undefined ? {} : { image_config: imageConfig }),
+        }),
+      }, 'CPA image editing')
+      return parseGeminiImage(response, 'CPA image editing')
+    },
   }
 }
 
@@ -124,9 +201,40 @@ function normalizedOption(value: string | undefined): string | undefined {
   return normalized === undefined || normalized === '' ? undefined : normalized
 }
 
-function cpaHeaders(apiKey: string): HeadersInit {
+function checkedReferenceImages(value: readonly CpaReferenceImage[]): CpaReferenceImage[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new LlmError('CPA image editing requires at least one reference image', 'INVALID_REQUEST')
+  }
+  let totalBytes = 0
+  return value.map((image, index) => {
+    if (typeof image !== 'object' || image === null || !(image.data instanceof Uint8Array) || image.data.byteLength === 0) {
+      throw new LlmError(`CPA image editing reference image ${String(index + 1)} is invalid`, 'INVALID_REQUEST')
+    }
+    if (!SUPPORTED_MEDIA_TYPES.has(image.mediaType)) {
+      throw new LlmError(`CPA image editing reference image ${String(index + 1)} has an unsupported media type`, 'INVALID_REQUEST')
+    }
+    totalBytes += image.data.byteLength
+    if (totalBytes > MAX_RESPONSE_BYTES * 8) {
+      throw new LlmError('CPA image editing reference images exceed the 32 MiB input limit', 'INVALID_REQUEST')
+    }
+    return { data: new Uint8Array(image.data), mediaType: image.mediaType }
+  })
+}
+
+function imageDataURL(image: CpaReferenceImage): string {
+  return `data:${image.mediaType};base64,${Buffer.from(image.data).toString('base64')}`
+}
+
+function extensionOf(mediaType: CpaImageMediaType): string {
+  if (mediaType === 'image/jpeg') return 'jpg'
+  if (mediaType === 'image/webp') return 'webp'
+  if (mediaType === 'image/gif') return 'gif'
+  return 'png'
+}
+
+function cpaHeaders(apiKey: string, json = true): HeadersInit {
   return {
-    'content-type': 'application/json',
+    ...(json ? { 'content-type': 'application/json' } : {}),
     accept: 'application/json',
     ...attributionHeaders(),
     authorization: `Bearer ${apiKey}`,
@@ -135,6 +243,10 @@ function cpaHeaders(apiKey: string): HeadersInit {
 
 function imageGenerationsURL(baseURL: string): string {
   return new URL('images/generations', ensureBaseURL(baseURL)).toString()
+}
+
+function imageEditsURL(baseURL: string): string {
+  return new URL('images/edits', ensureBaseURL(baseURL)).toString()
 }
 
 function chatCompletionsURL(baseURL: string): string {
@@ -170,30 +282,39 @@ async function readRequiredCredential(
   return credential.trim()
 }
 
-async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<unknown> {
+async function requestJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+  label = 'CPA image generation',
+): Promise<unknown> {
   let response: Response
   try {
     response = await fetchImpl(url, init)
   } catch (error) {
     if (error instanceof LlmError) throw error
     if (init.signal?.aborted) throw abortError()
-    throw new LlmError('CPA image generation request failed', 'TRANSPORT')
+    throw new LlmError(`${label} request failed`, 'TRANSPORT')
   }
 
   if (!response.ok) {
     await response.body?.cancel().catch(() => {})
-    throw new LlmError(`CPA image generation upstream answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
+    throw new LlmError(`${label} upstream answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
   }
-  return readBoundedJson(response, init.signal)
+  return readBoundedJson(response, init.signal, label)
 }
 
-async function readBoundedJson(response: Response, signal: AbortSignal | null | undefined): Promise<unknown> {
+async function readBoundedJson(
+  response: Response,
+  signal: AbortSignal | null | undefined,
+  label = 'CPA image generation',
+): Promise<unknown> {
   const bytes = await readBoundedBytes(response, signal)
   try {
     const text = new TextDecoder().decode(bytes)
     return text === '' ? {} : JSON.parse(text)
   } catch (error) {
-    throw new LlmError('CPA image generation upstream returned invalid JSON', 'INVALID_RESPONSE', { cause: error })
+    throw new LlmError(`${label} upstream returned invalid JSON`, 'INVALID_RESPONSE', { cause: error })
   }
 }
 
@@ -246,7 +367,12 @@ async function readBoundedBytes(response: Response, signal: AbortSignal | null |
   return bytes
 }
 
-async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: AbortSignal): Promise<CpaGeneratedImage> {
+async function parseGptImage(
+  body: unknown,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+  label = 'CPA image generation',
+): Promise<CpaGeneratedImage> {
   const item = arrayItem(record(body)?.data, 0)
   if (typeof item?.b64_json === 'string' && item.b64_json !== '') {
     return {
@@ -261,11 +387,11 @@ async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: Abo
     } catch (error) {
       if (error instanceof LlmError) throw error
       if (signal.aborted) throw abortError()
-      throw new LlmError('CPA image generation request failed', 'TRANSPORT')
+      throw new LlmError(`${label} request failed`, 'TRANSPORT')
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {})
-      throw new LlmError(`CPA image generation image download answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
+      throw new LlmError(`${label} image download answered HTTP ${response.status}`, 'UPSTREAM_HTTP_ERROR')
     }
     let mediaType: CpaGeneratedImage['mediaType']
     try {
@@ -276,14 +402,14 @@ async function parseGptImage(body: unknown, fetchImpl: typeof fetch, signal: Abo
     }
     const data = await readBoundedBytes(response, signal)
     if (data.byteLength === 0) {
-      throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+      throw new LlmError(`${label} succeeded but returned no image`, 'EMPTY_RESPONSE')
     }
     return {
       data,
       mediaType,
     }
   }
-  throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+  throw new LlmError(`${label} succeeded but returned no image`, 'EMPTY_RESPONSE')
 }
 
 function normalizeBodyReadError(error: unknown, signal: AbortSignal | null | undefined): LlmError {
@@ -297,19 +423,19 @@ function abortError(): LlmError {
   return new LlmError('CPA image generation request aborted', 'ABORTED')
 }
 
-function parseGeminiImage(body: unknown): CpaGeneratedImage {
+function parseGeminiImage(body: unknown, label = 'CPA image generation'): CpaGeneratedImage {
   const choice = arrayItem(record(body)?.choices, 0)
   const message = record(choice?.message)
   const image = arrayItem(message?.images, 0)
   const imageURL = record(image?.image_url)
   const url = imageURL?.url
   if (typeof url !== 'string' || url === '') {
-    throw new LlmError('CPA image generation succeeded but returned no image', 'EMPTY_RESPONSE')
+    throw new LlmError(`${label} succeeded but returned no image`, 'EMPTY_RESPONSE')
   }
   const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([a-z0-9+/=]+)$/iu.exec(url)
   if (!match) {
-    if (/^data:/iu.test(url)) throw new LlmError('CPA image generation returned an unsupported image media type', 'INVALID_RESPONSE')
-    throw new LlmError('CPA image generation returned an invalid Gemini image payload', 'INVALID_RESPONSE')
+    if (/^data:/iu.test(url)) throw new LlmError(`${label} returned an unsupported image media type`, 'INVALID_RESPONSE')
+    throw new LlmError(`${label} returned an invalid Gemini image payload`, 'INVALID_RESPONSE')
   }
   const mediaType = normalizeMediaType(match[1])
   return {
