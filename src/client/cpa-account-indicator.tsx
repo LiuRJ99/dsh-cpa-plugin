@@ -11,6 +11,7 @@ import {
   accountIdentity,
   accountLabel,
   accountQuotaPercent,
+  accountQuotaPercentEntry,
   accountQuotaProgress,
   accountWindowStats,
   type AccountQuotaProgress,
@@ -159,7 +160,7 @@ function AccountOption({
 }) {
   const availability = accountAvailability(account, model)
   const progress = accountQuotaProgress(account.quota, t, model)
-  const percent = accountQuotaPercent(progress)
+  const quotaEntry = accountQuotaPercentEntry(progress)
   const stats = accountWindowStats(account)
   return (
     <button
@@ -169,7 +170,7 @@ function AccountOption({
       aria-checked={selected}
       onClick={() => { onChoose(account) }}
     >
-      <span className="dsh-cpa-account-option-progress" style={percent === undefined ? undefined : { width: `${percent}%` }} />
+      <span className="dsh-cpa-account-option-progress" style={quotaEntry?.percent === undefined ? undefined : { width: `${quotaEntry.percent}%` }} />
       <span className="dsh-cpa-account-option-copy">
         <strong className="dsh-cpa-account-option-title">
           <span>{accountLabel(account)}</span>
@@ -179,7 +180,12 @@ function AccountOption({
         <small>{accountIdentity(account)}</small>
       </span>
       <span className="dsh-cpa-account-option-quota">
-        {percent === undefined ? t('account.quotaUnknown') : `${Math.round(percent)}%`}
+        {quotaEntry?.percent === undefined
+          ? t('account.quotaUnknown')
+          : <>
+              <span className="dsh-cpa-account-option-quota-label">{quotaEntry.label}</span>
+              <span className="dsh-cpa-account-option-quota-value">{Math.round(quotaEntry.percent)}%</span>
+            </>}
       </span>
       {selected ? <span className="dsh-cpa-account-option-check" aria-hidden="true">✓</span> : null}
     </button>

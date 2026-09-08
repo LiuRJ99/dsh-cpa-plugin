@@ -46,15 +46,27 @@ export interface AccountQuotaProgress {
  * no five-hour window or the five-hour window is exhausted (0%).
  */
 export function accountQuotaPercent(progress: readonly AccountQuotaProgress[]): number | undefined {
+  return accountQuotaPercentEntry(progress)?.percent
+}
+
+/**
+ * The quota window (and its category label) behind the single percentage the
+ * composer surfaces. Mirrors accountQuotaPercent(): prefer the five-hour
+ * window; use the weekly window only when there is no five-hour window or the
+ * five-hour window is exhausted (0%). Callers can label the figure with its
+ * category (e.g. "5h" vs "Weekly limit") so the switcher popup makes clear
+ * which quota window the shown percentage belongs to.
+ */
+export function accountQuotaPercentEntry(progress: readonly AccountQuotaProgress[]): AccountQuotaProgress | undefined {
   const fiveHour = progress.find(entry => entry.key === 'five_hour')
   const weekly = progress.find(entry => entry.key === 'weekly')
   if (fiveHour !== undefined) {
-    if (fiveHour.percent === undefined) return weekly?.percent
-    if (fiveHour.percent > 0) return fiveHour.percent
+    if (fiveHour.percent === undefined) return weekly
+    if (fiveHour.percent > 0) return fiveHour
     // five-hour window is exhausted (0%): fall back to the weekly window.
-    return weekly?.percent ?? fiveHour.percent
+    return weekly ?? fiveHour
   }
-  return weekly?.percent ?? progress.find(entry => entry.percent !== undefined)?.percent
+  return weekly ?? progress.find(entry => entry.percent !== undefined)
 }
 
 export interface AccountWindowStats {

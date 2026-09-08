@@ -622,6 +622,49 @@ test('accountQuotaPercent prefers five-hour and falls back to weekly only when a
   assert.equal(accountQuotaPercent([{ key: 'overall', label: '额度' }]), undefined)
 })
 
+test('accountQuotaPercentEntry returns the window behind the surfaced percentage', async () => {
+  const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const { accountQuotaPercentEntry, accountQuotaPercent } = displayModule
+
+  // Both windows: the five-hour entry wins, so the popup labels it "5小时".
+  const both = [
+    { key: 'five_hour', label: '5小时', percent: 100 },
+    { key: 'weekly', label: '周限额', percent: 61 },
+  ]
+  assert.equal(accountQuotaPercentEntry(both).key, 'five_hour')
+  assert.equal(accountQuotaPercentEntry(both).label, '5小时')
+
+  // Five-hour exhausted (0%): the weekly entry is the one surfaced.
+  const exhausted = [
+    { key: 'five_hour', label: '5小时', percent: 0 },
+    { key: 'weekly', label: '周限额', percent: 61 },
+  ]
+  assert.equal(accountQuotaPercentEntry(exhausted).key, 'weekly')
+
+  // Weekly only.
+  const weeklyOnly = [{ key: 'weekly', label: '周限额', percent: 79 }]
+  assert.equal(accountQuotaPercentEntry(weeklyOnly).key, 'weekly')
+
+  // Five-hour only.
+  const fiveHourOnly = [{ key: 'five_hour', label: '5小时', percent: 100 }]
+  assert.equal(accountQuotaPercentEntry(fiveHourOnly).key, 'five_hour')
+
+  // Five-hour without a percentage falls back to weekly.
+  assert.equal(accountQuotaPercentEntry([
+    { key: 'five_hour', label: '5小时' },
+    { key: 'weekly', label: '周限额', percent: 79 },
+  ]).key, 'weekly')
+
+  // Empty progress and percent-less first fallback.
+  assert.equal(accountQuotaPercentEntry([]), undefined)
+  assert.equal(accountQuotaPercentEntry([{ key: 'overall', label: '额度' }]), undefined)
+  assert.equal(accountQuotaPercentEntry([{ key: 'overall', label: '额度', percent: 42 }]).key, 'overall')
+
+  // The entry's percent is exactly what accountQuotaPercent returns.
+  assert.equal(accountQuotaPercentEntry(both).percent, accountQuotaPercent(both))
+  assert.equal(accountQuotaPercentEntry(exhausted).percent, accountQuotaPercent(exhausted))
+})
+
 test('accountAvailability treats transient CPA error status as usable when quota is healthy', async () => {
   const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
   const { accountAvailability } = displayModule

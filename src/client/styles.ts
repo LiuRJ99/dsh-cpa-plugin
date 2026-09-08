@@ -36,7 +36,9 @@ const CSS = `
 .dsh-cpa-count.is-success{color:var(--dsw-alias-state-success-label,#4caf70)}
 .dsh-cpa-count.is-failed{color:var(--dsw-alias-state-error-primary,#e45c5c)}
 .dsh-cpa-account-option-copy small{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:13px}
-.dsh-cpa-account-option-quota{max-width:75px;overflow:hidden;color:var(--dsw-alias-label-tertiary);font-size:11px;text-align:right;text-overflow:ellipsis;white-space:nowrap}
+.dsh-cpa-account-option-quota{display:flex;flex:0 0 auto;max-width:96px;min-width:0;flex-direction:column;align-items:flex-end;gap:1px;overflow:hidden;color:var(--dsw-alias-label-tertiary);text-align:right;white-space:nowrap}
+.dsh-cpa-account-option-quota-label{max-width:100%;overflow:hidden;font-size:10px;line-height:13px;text-overflow:ellipsis;white-space:nowrap}
+.dsh-cpa-account-option-quota-value{font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
 .dsh-cpa-account-option-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);text-align:center}
 .dsh-cpa-account-menu-error{padding:5px 7px;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:15px}
 .dsh-cpa-model-trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:220px;height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;outline:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;font-weight:500;cursor:pointer}
