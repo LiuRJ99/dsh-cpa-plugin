@@ -188,7 +188,14 @@ export class CpaClient {
   async listModelCapabilities(): Promise<readonly ModelCapability[]> {
     const provider = this.store.getSnapshot().providerId
     const models = await this.loadModelCapabilities()
-    return models.map(model => ({ provider, model: model.id, serviceTiers: model.serviceTiers }))
+    return models.map(model => ({
+      provider,
+      model: model.id,
+      serviceTiers: model.serviceTiers,
+      ...model.imageGeneration === true ? { imageGeneration: true } : {},
+      ...model.imageEngine === undefined ? {} : { imageEngine: model.imageEngine },
+      ...model.imageEdit === undefined ? {} : { imageEdit: model.imageEdit },
+    }))
   }
 
   hasSpeedPreference(sessionId: string, model: string): boolean {
@@ -420,6 +427,13 @@ export function hasFastSpeedCapability(model: string, capabilities: readonly Cpa
     const ids = [entry.id, ...(entry.aliases ?? [])]
     return ids.includes(model) && entry.serviceTiers.some(tier => tier.id === 'priority')
   })
+}
+
+export function hasImageGenerationCapability(model: string, capabilities: readonly CpaModelCapability[]): boolean {
+  const wanted = model.trim().toLowerCase()
+  if (wanted === '') return false
+  return capabilities.some(entry => entry.imageGeneration === true && [entry.id, ...(entry.aliases ?? [])]
+    .some(id => id.trim().toLowerCase() === wanted))
 }
 
 function speedKey(sessionId: string, model: string): string {

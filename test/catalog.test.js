@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   catalogURL,
+  imageModelInfoOf,
   isHiddenImageModel,
   isImageOnlyModel,
   modelProfileOf,
@@ -100,7 +101,7 @@ test('filters hidden models by default and deduplicates slugs', () => {
   assert.deepEqual(models.map((model) => model.id), ['visible'])
 })
 
-test('marks only the explicit image-only ids and keeps ordinary gemini models visible', () => {
+test('marks compatible GPT/Gemini image models and keeps ordinary Gemini models visible', () => {
   assert.equal(modelProfileOf({ id: 'gpt-image-2' })?.imageGeneration, true)
   assert.equal(modelProfileOf({ id: 'gemini-3.1-flash-image' })?.imageGeneration, true)
   assert.equal(modelProfileOf({ id: 'gpt-image-1.5' })?.imageGeneration, true)
@@ -119,7 +120,49 @@ test('marks only the explicit image-only ids and keeps ordinary gemini models vi
   assert.equal(isImageOnlyModel({ id: 'gemini-3.1-flash-agent' }), false)
 })
 
-test('re-admits hidden image-only entries without using suffix inference', () => {
+test('reads explicit image metadata for future models and re-admits hidden entries', () => {
+  const entry = {
+    id: 'gpt-image-2.5',
+    display_name: 'GPT Image 2.5',
+    visibility: 'hide',
+    image_generation: true,
+    image_engine: 'gpt',
+    image_edit: true,
+  }
+  assert.deepEqual(imageModelInfoOf(entry), {
+    imageGeneration: true,
+    imageEngine: 'gpt',
+    imageEdit: true,
+  })
+  assert.equal(isImageOnlyModel(entry), true)
+  assert.equal(isHiddenImageModel(entry), true)
+  assert.deepEqual(modelProfileOf(entry), {
+    id: 'gpt-image-2.5',
+    name: 'GPT Image 2.5',
+    contextWindow: undefined,
+    maxTokens: undefined,
+    input: ['text'],
+    imageGeneration: true,
+    imageEngine: 'gpt',
+    imageEdit: true,
+  })
+  assert.equal(isImageOnlyModel({ id: 'gpt-image-2.5', image_generation: false }), false)
+  assert.equal(isImageOnlyModel({ id: 'gpt-image-2', image_generation: false }), false)
+})
+
+test('supports future GPT and Gemini image namespaces when older CPA catalogs omit metadata', () => {
+  assert.deepEqual(imageModelInfoOf({ id: 'gpt-image-2.5' }), {
+    imageGeneration: true,
+    imageEngine: 'gpt',
+  })
+  assert.deepEqual(imageModelInfoOf({ id: 'gemini-4-image' }), {
+    imageGeneration: true,
+    imageEngine: 'gemini',
+  })
+  assert.equal(isImageOnlyModel({ id: 'gpt-image-2-mini' }), false)
+})
+
+test('re-admits hidden image-only entries without broad suffix inference', () => {
   const models = readCodexCatalog({ models: [
     { id: 'gpt-image-2', visibility: 'hide', max_context_window: 32000 },
     { id: 'gemini-3.1-flash-image', visibility: 'hide', max_context_window: 32000 },

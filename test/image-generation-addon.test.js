@@ -259,3 +259,27 @@ test('Host add-on reuses the native CLIProxyAPI model key for the add-on key ref
     harness.dispose()
   }
 })
+
+test('Host image service lists future image models from the cached/profile capability projection', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ models: [] }), { status: 200 })
+  const harness = createHarness()
+  try {
+    apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI' }))
+    await harness.updateProfile(managedProfile({ models: [{
+      id: 'gpt-image-2.5',
+      name: 'GPT Image 2.5',
+      imageGeneration: true,
+    }] }))
+    const service = harness.provided.get(IMAGE_SERVICE_EXPORT.IMAGE_GENERATION_SERVICE)
+    assert.deepEqual(await service.listModels(), [{
+      id: 'gpt-image-2.5',
+      name: 'GPT Image 2.5',
+      engine: 'gpt',
+      supportsGenerate: true,
+    }])
+  } finally {
+    globalThis.fetch = previousFetch
+    harness.dispose()
+  }
+})

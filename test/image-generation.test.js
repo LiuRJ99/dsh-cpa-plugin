@@ -27,6 +27,7 @@ function createHarness(options = {}) {
         calls.push({ url: String(url), init })
         return fetchImpl(url, init)
       },
+      ...(options.listModels === undefined ? {} : { listModels: options.listModels }),
     },
   )
   return { calls, credentialRefs, service }
@@ -60,6 +61,60 @@ test('GPT maps engine to images/generations and decodes b64_json', async () => {
   assert.equal(JSON.parse(calls[0].init.body).n, 1)
   assert.deepEqual(image.data, PNG_BYTES)
   assert.equal(image.mediaType, 'image/png')
+})
+
+test('uses the first available image model when the legacy default is omitted', async () => {
+  const { calls, service } = createHarness({
+    listModels: async () => [{
+      id: 'gpt-image-2.5',
+      name: 'GPT Image 2.5',
+      engine: 'gpt',
+      supportsGenerate: true,
+    }],
+    fetchImpl: async () => new Response(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }), { status: 200 }),
+  })
+  await service.listModels()
+  await service.generate({ engine: 'gpt', prompt: 'auto default', signal: new AbortController().signal })
+  assert.equal(JSON.parse(calls[0].init.body).model, 'gpt-image-2.5')
+})
+
+test('lists and routes a future GPT model without a new protocol branch', async () => {
+  const { calls, service } = createHarness({
+    listModels: async () => [{
+      id: 'gpt-image-2.5',
+      name: 'GPT Image 2.5',
+      engine: 'gpt',
+      supportsGenerate: true,
+      supportsEdit: true,
+    }],
+    fetchImpl: async () => new Response(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }), { status: 200 }),
+  })
+
+  assert.deepEqual(await service.listModels(), [{
+    id: 'gpt-image-2.5',
+    name: 'GPT Image 2.5',
+    engine: 'gpt',
+    supportsGenerate: true,
+    supportsEdit: true,
+  }])
+  const image = await service.generate({
+    engine: 'gpt',
+    model: 'gpt-image-2.5',
+    prompt: 'a blue circle',
+    signal: new AbortController().signal,
+  })
+  assert.equal(JSON.parse(calls[0].init.body).model, 'gpt-image-2.5')
+  assert.equal(image.model, 'gpt-image-2.5')
+})
+
+test('rejects a selected model from the wrong image engine', async () => {
+  const { service } = createHarness({
+    listModels: async () => [{ id: 'gemini-future-image', name: 'Gemini Future Image', engine: 'gemini', supportsGenerate: true }],
+  })
+  await assert.rejects(
+    service.generate({ engine: 'gpt', model: 'gemini-future-image', prompt: 'bad route', signal: new AbortController().signal }),
+    error => error?.code === 'INVALID_REQUEST' && /unavailable/u.test(error.message),
+  )
 })
 
 test('GPT edits through images/edits multipart and preserves reference order', async () => {

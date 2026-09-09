@@ -3,14 +3,23 @@ import type {
   CpaGeneratedImage,
   CpaImageEditRequest,
   CpaImageGenerationRequest,
+  CpaImageModel,
   CpaImageGenerationService,
   CpaReferenceImage,
   ImageEngine,
 } from '@LiuRJ99/dsh-cpa-plugin/image-generation'
 
 const engine: ImageEngine = 'gpt'
+const imageModel: CpaImageModel = {
+  id: 'gpt-image-2.5',
+  name: 'GPT Image 2.5',
+  engine: 'gpt',
+  supportsGenerate: true,
+}
+
 const request: CpaImageGenerationRequest = {
   engine,
+  model: imageModel.id,
   prompt: 'consumer prompt',
   signal: new AbortController().signal,
 }
@@ -33,6 +42,9 @@ const editRequest: CpaImageEditRequest = {
 }
 
 const service: CpaImageGenerationService = {
+  async listModels() {
+    return [imageModel]
+  },
   async generate(input) {
     const normalized: CpaImageGenerationRequest = input
     normalized.prompt satisfies string

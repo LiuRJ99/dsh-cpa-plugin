@@ -14,10 +14,10 @@ import type { ModelSelectInjected } from '@deepseek-ai/dsh-client-ui-model-selec
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { UseChat } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
-import { hasFastSpeedCapability, type CpaClient } from './cpa-client.ts'
+import { hasFastSpeedCapability, hasImageGenerationCapability, type CpaClient } from './cpa-client.ts'
 import { accountAvailability, modelFamilyOf, type ModelFamily } from './cpa-account-display.ts'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
-import type { CpaSpeed } from './protocol.ts'
+import type { CpaModelCapability, CpaSpeed } from './protocol.ts'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
 import { isImageOnlyModel } from '../catalog.js'
 
@@ -74,8 +74,8 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
     selection: selectionForModel(group.id, model, null),
   }))), [state.groups])
   const displayGroups = useMemo(
-    () => displayModelGroups(state.groups, cpaState.providerId, t),
-    [state.groups, cpaState.providerId, t],
+    () => displayModelGroups(state.groups, cpaState.providerId, cpaState.modelCapabilities, t),
+    [state.groups, cpaState.providerId, cpaState.modelCapabilities, t],
   )
   const currentChoice = state.current === null
     ? undefined
@@ -344,15 +344,16 @@ function hasImageContent(value: unknown): boolean {
 function displayModelGroups(
   groups: readonly ModelProviderGroup[],
   cpaProviderId: string,
+  capabilities: readonly CpaModelCapability[],
   t: Props['t'],
 ): DisplayGroup[] {
   return groups.flatMap(group => {
     if (group.id !== cpaProviderId) {
-      const models = visibleModelsOf(group.models)
+      const models = visibleModelsOf(group.models, [])
       return models.length === 0 ? [] : [{ ...group, providerId: group.id, models }]
     }
     const buckets = new Map<ModelFamily, ModelCatalogModel[]>()
-    for (const model of visibleModelsOf(group.models)) {
+    for (const model of visibleModelsOf(group.models, capabilities)) {
       const family = familyOf(model)
       const bucket = buckets.get(family)
       if (bucket === undefined) buckets.set(family, [model])
@@ -371,8 +372,8 @@ function displayModelGroups(
   })
 }
 
-function visibleModelsOf(models: readonly ModelCatalogModel[]): ModelCatalogModel[] {
-  return models.filter(model => !isImageOnlyModel(model.id))
+function visibleModelsOf(models: readonly ModelCatalogModel[], capabilities: readonly CpaModelCapability[]): ModelCatalogModel[] {
+  return models.filter(model => !isImageOnlyModel(model.id) && !hasImageGenerationCapability(model.id, capabilities))
 }
 
 const CPA_MODEL_FAMILY_ORDER: readonly ModelFamily[] = ['gpt', 'claude', 'gemini', 'deepseek', 'other']

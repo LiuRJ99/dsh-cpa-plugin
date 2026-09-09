@@ -1,5 +1,7 @@
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@deepseek-ai/dsh-llm'
+// @ts-expect-error Runtime JS module is exported without a sibling declaration file.
+import { imageModelInfoOf } from './catalog.js'
 
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 const DEFAULT_TIMEOUT_MS = 15000
@@ -99,12 +101,22 @@ function readModels(value: unknown): LlmDiscoveredModel[] {
     const name = text(entry?.display_name, entry?.name, entry?.description, id)
     const contextWindow = positiveInteger(entry?.max_context_window, entry?.context_window, entry?.context_length)
     const maxTokens = positiveInteger(entry?.max_output_tokens, entry?.max_completion_tokens, entry?.max_tokens)
+    const imageInfo = imageModelInfoOf(entry) as {
+      imageGeneration?: boolean
+      imageEngine?: 'gpt' | 'gemini'
+      imageEdit?: boolean
+    } | undefined
     models.push({
       id,
       ...name === undefined ? {} : { name },
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
-    })
+      ...(imageInfo?.imageGeneration !== true ? {} : {
+        imageGeneration: true,
+        ...imageInfo.imageEngine === undefined ? {} : { imageEngine: imageInfo.imageEngine },
+        ...imageInfo.imageEdit === undefined ? {} : { imageEdit: imageInfo.imageEdit },
+      }),
+    } as LlmDiscoveredModel)
   }
   return models
 }

@@ -6,7 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
+- Added dynamic CPA image-model selection without a second catalog owner: the existing Host capability cache now projects image metadata, the `dshCpaImageGeneration` service exposes an optional redacted `listModels()` catalog, and `generate()`/`edit()` accept a validated concrete `model` while retaining legacy engine defaults. GPT and Gemini remain protocol-family routes, so same-family models can be added without ImageGen model-ID changes.
 - Added an optional backward-compatible `CpaImageGenerationService.edit()` capability with provider-neutral reference image bytes. GPT uses CLIProxyAPI `/v1/images/edits`; Gemini uses multimodal `/v1/chat/completions` content parts and preserves the existing `generate()` path.
+
+### Packaging
+
+- Pinned source builds to pnpm 11.7.0 and replaced the invalid `allowBuilds` placeholders with explicit boolean approvals for the required `@google/genai` and `protobufjs` hooks.
+- Added package-entry/packlist verification and made the CI path use the same pnpm install and tarball flow consumed by DSH.
 
 ### Fixes
 

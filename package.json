@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:image-generation-contract": "tsc --noEmit --target ES2024 --module NodeNext --moduleResolution NodeNext --lib ES2024,DOM --strict --skipLibCheck test/image-generation-contract.ts",
     "check": "node --check src/index.js && node --check src/catalog.js && node --check client.js && node --check lib/index.js && node --test",
-    "pack:github": "npm pack"
+    "verify:package": "node scripts/verify-package-contract.mjs",
+    "pack:github": "pnpm pack"
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
@@ -109,5 +110,6 @@
   },
   "engines": { "node": ">=22.19.0" },
   "license": "MIT",
+  "packageManager": "pnpm@11.7.0",
   "private": true
 }

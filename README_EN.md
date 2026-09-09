@@ -4,15 +4,17 @@ English | [简体中文](./README.md)
 
 Adds a `CLIProxyAPI` model provider based on the OpenAI Responses API to DeepSeek Harness.
 
-The plugin automatically retrieves the model list from CLIProxyAPI, so models do not need to be added or maintained manually. This project is not published to npm; installation uses the GitHub repository directly.
+The plugin automatically retrieves the model list from CLIProxyAPI, so models do not need to be added or maintained manually. This project is not published to npm; cross-machine installation must use an approved pinned Git commit or tarball.
 
 ## Usage
 
-### Install from GitHub
+### Install from a pinned Git commit
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#main"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<40-character-commit>"
 ```
+
+Do not use `#main`, `@latest`, or a local `link:` from machine A. Install and verify the target on a candidate profile before promoting it to the formal `web` profile.
 
 Start or restart DeepSeek Harness Web:
 
@@ -20,11 +22,23 @@ Start or restart DeepSeek Harness Web:
 dsh --profile web
 ```
 
-Update an existing GitHub installation:
+### Update an existing installation
+
+Replace `<40-character-commit>` with a new, verified commit and run `dsh plugin add` again:
 
 ```sh
-dsh plugin --profile web update
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<new-40-character-commit>"
 ```
+
+Do not run an unscoped `dsh plugin --profile web update`, because it may update other plugins in the profile at the same time.
+
+### Installation prerequisites
+
+- The DSH Host must satisfy the peer compatibility range declared by this plugin.
+- Node.js must satisfy `engines`; source builds use the pnpm version declared by this repository.
+- pnpm 11 source installs use the boolean `allowBuilds` entries in this repository's `pnpm-workspace.yaml`.
+- Allow the `@google/genai` and `protobufjs` install scripts only after confirming what they do.
+- This workspace policy is not inherited by a DSH profile. If the target profile uses pnpm 11, configure the required build approvals in the profile's own `pnpm-workspace.yaml`.
 
 ### Configuration
 
@@ -64,6 +78,7 @@ This project keeps only the following additions on top of the official CLIProxyA
 
 - Exports the stable `./image-generation` entry contract and `dshCpaImageGeneration` service token for downstream consumers.
 - Unified routing for GPT (`images/generations`) and Gemini (`chat/completions`) CPA image generation protocols.
+- Projects image-model capabilities from the CPA catalog and exposes a redacted `listModels()` plus `model` validation to downstream consumers; new models in the same protocol family no longer require ImageGen ID changes. CPA metadata such as `image_generation`/`image_engine` is preferred, with compatibility support for the three legacy image IDs.
 - Automatically filters image-only models from standard model selectors and settings to avoid conflicts with text conversation flows.
 
 ## Current test coverage
@@ -90,8 +105,10 @@ Restart DeepSeek Harness Web after uninstalling. The plugin does not modify the 
 ## Local development checks
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run typecheck
-pnpm run test
+pnpm run typecheck:image-generation-contract
 pnpm run bundle
+pnpm run verify:package
+pnpm run pack:github
 ```

@@ -551,7 +551,11 @@ function cloneDraft(draft: ModelDraftState, models: readonly NormalizedCpaModel[
 }
 
 function visibleModelEntries(models: readonly CpaModelDraft[]): Array<{ index: number; model: CpaModelDraft }> {
-  return models.flatMap((model, index) => isImageOnlyModel(model.id) ? [] : [{ index, model }])
+  return models.flatMap((model, index) => isImageOnlyDraft(model) ? [] : [{ index, model }])
+}
+
+function isImageOnlyDraft(model: CpaModelDraft): boolean {
+  return isImageOnlyModel({ ...model.extraFields, id: model.id })
 }
 
 function extraModelFields(value: unknown): Record<string, unknown> {

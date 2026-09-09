@@ -4,15 +4,17 @@
 
 为 DeepSeek Harness 添加一个基于 OpenAI Responses API 的 `CLIProxyAPI` 模型供应商。
 
-插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，安装时直接从 GitHub 仓库获取。
+插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，跨机器安装必须使用经过验证的固定 Git commit 或 tarball。
 
 ## 使用方式
 
-### 从 GitHub 安装
+### 从固定 Git commit 安装
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#main"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<40位commit>"
 ```
+
+不要使用 `#main`、`@latest` 或 A 机器 profile 中的本地 `link:`。目标机器必须先在 candidate profile 中完成安装和验证，再迁移到正式 `web` profile。
 
 启动或重启 DeepSeek Harness Web：
 
@@ -20,11 +22,23 @@ dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#main"
 dsh --profile web
 ```
 
-如果已经安装过插件，更新 GitHub 版本：
+### 更新已有安装
+
+更新时将 `<40位commit>` 替换成新的、已验证的 commit，并重新执行 `dsh plugin add`：
 
 ```sh
-dsh plugin --profile web update
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<新的40位commit>"
 ```
+
+不要使用无差别的 `dsh plugin --profile web update`，因为它可能同时更新 profile 中的其他插件。
+
+### 安装前提
+
+- DSH Host 必须满足当前插件声明的 peer 兼容范围；
+- Node.js 必须满足 `engines`，源码构建使用仓库声明的 pnpm 版本；
+- pnpm 11 源码安装使用本仓库 `pnpm-workspace.yaml` 中的布尔 `allowBuilds`；
+- `@google/genai` 和 `protobufjs` 的安装脚本只在确认其用途后允许执行；
+- 该 workspace 的构建策略不会自动传递给 DSH profile。若目标 profile 使用 pnpm 11，必须在 profile 自己的 `pnpm-workspace.yaml` 配置所需的构建授权。
 
 ### 配置
 
@@ -64,6 +78,7 @@ dsh plugin --profile web update
 
 - 导出稳定的 `./image-generation` 入口契约与 `dshCpaImageGeneration` 服务标识，供下游消费方直接集成。
 - 统一承接 GPT (`images/generations`) 与 Gemini (`chat/completions`) 双路 CPA 图像生成协议。
+- 从 CPA 模型目录投影图片模型能力，向下游提供脱敏的 `listModels()` 与 `model` 校验；新增同协议图片模型无需 ImageGen 再维护 ID 常量。优先读取 CPA 返回的 `image_generation`/`image_engine` 等元数据，同时兼容现有三个图片模型 ID。
 - 在常规模型选择器与设置中自动过滤仅图像模型（Image-only models），避免与文本对话流冲突。
 
 ## 当前测试范围
@@ -90,8 +105,10 @@ dsh plugin --profile web remove @LiuRJ99/dsh-cpa-plugin
 ## 本地开发检查
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run typecheck
-pnpm run test
+pnpm run typecheck:image-generation-contract
 pnpm run bundle
+pnpm run verify:package
+pnpm run pack:github
 ```

@@ -18,6 +18,12 @@ export interface ModelCapability {
   provider: string
   model: string
   serviceTiers: readonly ModelServiceTier[]
+  /** True when this model can produce an image through a provider image service. */
+  imageGeneration?: boolean
+  /** Image protocol family for image-capable models. */
+  imageEngine?: 'gpt' | 'gemini'
+  /** Explicit image editing capability, when known. */
+  imageEdit?: boolean
 }
 
 export interface ModelCapabilityProvider {

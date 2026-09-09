@@ -1,3 +1,5 @@
+# These dependencies execute required install hooks during a pnpm 11 source install.
+# The consuming DSH profile must configure its own build policy separately.
 allowBuilds:
-  '@google/genai': set this to true or false
-  protobufjs: set this to true or false
+  '@google/genai': true
+  protobufjs: true

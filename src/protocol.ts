@@ -103,9 +103,17 @@ export interface CpaServiceTier {
 
 export interface CpaModelCapability {
   id: string
+  /** Human-readable model name when the catalog supplies one. */
+  name?: string
   /** Alternate upstream identities for the same route (slug/id/model). */
   aliases?: readonly string[]
   serviceTiers: readonly CpaServiceTier[]
+  /** True when the catalog explicitly or compatibly identifies image output. */
+  imageGeneration?: boolean
+  /** Protocol family used by the CPA image service. */
+  imageEngine?: 'gpt' | 'gemini'
+  /** Explicit image editing capability, when the catalog reports it. */
+  imageEdit?: boolean
 }
 
 export interface CpaModelCapabilitiesView {

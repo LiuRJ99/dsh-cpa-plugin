@@ -12,13 +12,14 @@ import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { RpcResult } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-settings'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
-import { isImageOnlyModel } from './catalog.js'
+import { imageModelInfoOf, isImageOnlyModel } from './catalog.js'
 import { streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
 import {
   createCpaImageGenerationService,
   IMAGE_GENERATION_SERVICE,
   type CpaImageGenerationService,
+  type CpaImageModel,
 } from './image-generation.ts'
 import { discoverCpaModels } from './model-discovery.ts'
 import { MODEL_CAPABILITY_SERVICE, PRIORITY_SERVICE_TIER, type ModelCapabilityProvider } from './model-capabilities.ts'
@@ -138,18 +139,6 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     const fallback = await readCredential(fallbackRef)
     return fallback !== undefined && fallback.trim() !== '' ? fallback : primary
   }
-  const imageService = createCpaImageGenerationService(
-    (_engine) => {
-      const route = cpaFastRoute(ctx, effectiveConfig(ctx, config))
-      return route === undefined ? undefined : {
-        baseURL: route.baseURL,
-        apiKeyEnv: route.apiKeyEnv,
-      }
-    },
-    readImageCredential,
-  )
-  ctx.provide(IMAGE_GENERATION_SERVICE, imageService satisfies CpaImageGenerationService)
-
   const capabilityCacheKeyOf = (currentConfig: Config): string => `${currentConfig.endpoint}\u0000${currentConfig.providerId}`
   const applyCapabilities = (value: CpaModelCapabilitiesView, key: string): CpaModelCapabilitiesView => {
     capabilitiesCacheKey = key
@@ -157,7 +146,7 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     fastModelIds.clear()
     for (const model of value.models) {
       if (!model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) continue
-      if (isImageOnlyModel(model.id)) continue
+      if (model.imageGeneration === true || isImageOnlyModel(model.id)) continue
       fastModelIds.add(model.id)
       for (const alias of model.aliases ?? []) {
         if (!isImageOnlyModel(alias)) fastModelIds.add(alias)
@@ -173,6 +162,14 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     capabilitiesPromiseKey = ''
     fastModelIds.clear()
   }
+  ;(ctx.on as unknown as (event: string, listener: () => void) => unknown)(MODEL_REFRESH_EVENT, () => invalidateModelCapabilities())
+  ctx.on('settings/updated', (namespace) => {
+    if (namespace === MODEL_SETTINGS_NS) invalidateModelCapabilities()
+  })
+  ctx.on('settings/document-updated', (namespace) => {
+    if (namespace === MODEL_SETTINGS_NS) invalidateModelCapabilities()
+  })
+
   const loadModelCapabilities = (signal: AbortSignal): Promise<CpaModelCapabilitiesView> => {
     const epoch = capabilitiesEpoch
     const currentConfig = effectiveConfig(ctx, config)
@@ -192,6 +189,23 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     )
     return pending
   }
+  const listImageModels = async (signal?: AbortSignal): Promise<readonly CpaImageModel[]> => {
+    const value = await loadModelCapabilities(signal ?? new AbortController().signal)
+    return mergeImageModels(imageModelsOf(value.models), imageModelsFromProfile(ctx, effectiveConfig(ctx, config)))
+  }
+  const imageService = createCpaImageGenerationService(
+    (_engine) => {
+      const route = cpaImageRoute(ctx, effectiveConfig(ctx, config))
+      return route === undefined ? undefined : {
+        baseURL: route.baseURL,
+        apiKeyEnv: route.apiKeyEnv,
+      }
+    },
+    readImageCredential,
+    { listModels: signal => listImageModels(signal) },
+  )
+  ctx.provide(IMAGE_GENERATION_SERVICE, imageService satisfies CpaImageGenerationService)
+
   const capabilityProvider: ModelCapabilityProvider = {
     listModelCapabilities: async (signal) => {
       const value = await loadModelCapabilities(signal ?? new AbortController().signal)
@@ -200,6 +214,9 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
         provider,
         model: modelId,
         serviceTiers: model.serviceTiers,
+        ...model.imageGeneration === true ? { imageGeneration: true } : {},
+        ...model.imageEngine === undefined ? {} : { imageEngine: model.imageEngine },
+        ...model.imageEdit === undefined ? {} : { imageEdit: model.imageEdit },
       })))
     },
   }
@@ -486,6 +503,21 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
   }
 }
 
+/** Resolve the image route without requiring the text Responses protocol. */
+function cpaImageRoute(ctx: Context, config: Config): { baseURL: string; apiKeyEnv?: string } | undefined {
+  const settings = ctx.get('settings')
+  const value = settings?.get(MODEL_SETTINGS_NS)
+  const providers = valueObject(valueObject(value)?.providers)
+  const providerId = providerCandidates(config).find(candidate => valueObject(providers?.[candidate]) !== undefined) ?? config.providerId
+  const profile = valueObject(providers?.[providerId])
+  const baseURL = stringValue(profile?.baseURL) ?? modelEndpoint(config.endpoint)
+  if (baseURL === '') return undefined
+  return {
+    baseURL: modelEndpoint(baseURL),
+    apiKeyEnv: stringValue(profile?.apiKeyEnv) ?? NATIVE_MODEL_KEY_REF,
+  }
+}
+
 /** Fetch the extended CLIProXyAPI catalog; the plain endpoint omits service tiers. */
 async function fetchModelCapabilities(
   ctx: Context,
@@ -493,7 +525,7 @@ async function fetchModelCapabilities(
   readCredential: (ref: string) => Promise<string | undefined>,
   signal: AbortSignal,
 ): Promise<CpaModelCapabilitiesView> {
-  const route = cpaFastRoute(ctx, config)
+  const route = cpaImageRoute(ctx, config)
   if (route === undefined) return { models: [], fetchedAt: new Date().toISOString() }
   const key = route.apiKeyEnv === undefined ? undefined : await readCredential(route.apiKeyEnv)
   if (key === undefined || key.trim() === '') return { models: [], fetchedAt: new Date().toISOString() }
@@ -607,12 +639,86 @@ export function parseModelCapabilities(value: unknown): CpaModelCapability[] {
         ...stringValue(tier?.description) === undefined ? {} : { description: stringValue(tier?.description) },
       }]
     })
+    const imageInfo = imageModelInfoOf(entry) as {
+      imageGeneration?: boolean
+      imageEngine?: 'gpt' | 'gemini'
+      imageEdit?: boolean
+    } | undefined
     return [{
       id,
+      ...firstStringValue(entry?.display_name, entry?.name, entry?.description) === undefined ? {} : { name: firstStringValue(entry?.display_name, entry?.name, entry?.description) },
       ...aliases.length > 0 ? { aliases } : {},
       serviceTiers: parsedTiers,
+      ...(imageInfo?.imageGeneration !== true ? {} : {
+        imageGeneration: true,
+        ...imageInfo.imageEngine === undefined ? {} : { imageEngine: imageInfo.imageEngine },
+        ...imageInfo.imageEdit === undefined ? {} : { imageEdit: imageInfo.imageEdit },
+      }),
     }]
   })
+}
+
+function imageModelsOf(models: readonly CpaModelCapability[]): CpaImageModel[] {
+  const seen = new Set<string>()
+  return models.flatMap(model => {
+    if (model.imageGeneration !== true) return []
+    const id = model.id.trim()
+    const name = model.name?.trim() || id
+    const engine = model.imageEngine ?? inferredImageEngine(id)
+    if (id === '' || id.length > 256 || name.length > 256 || engine === undefined || seen.size >= 256 || seen.has(id.toLowerCase())) return []
+    seen.add(id.toLowerCase())
+    const aliases = (model.aliases ?? []).filter(alias => typeof alias === 'string' && alias.trim() !== '')
+    return [{
+      id,
+      name,
+      ...(aliases.length === 0 ? {} : { aliases }),
+      engine,
+      supportsGenerate: true,
+      ...(model.imageEdit === undefined ? {} : { supportsEdit: model.imageEdit }),
+    }]
+  })
+}
+
+function imageModelsFromProfile(ctx: Context, config: Config): CpaImageModel[] {
+  const settings = ctx.get('settings')
+  const value = settings?.get(MODEL_SETTINGS_NS)
+  const providers = valueObject(valueObject(value)?.providers)
+  const providerId = providerCandidates(config).find(candidate => valueObject(providers?.[candidate]) !== undefined) ?? config.providerId
+  const profile = valueObject(providers?.[providerId])
+  if (!Array.isArray(profile?.models)) return []
+  return imageModelsOf(profile.models.flatMap(modelValue => {
+    const model = valueObject(modelValue)
+    if (model === undefined) return []
+    const id = stringValue(model.id)
+    const imageInfo = imageModelInfoOf(model) as { imageGeneration?: boolean; imageEngine?: 'gpt' | 'gemini'; imageEdit?: boolean } | undefined
+    if (id === undefined || imageInfo?.imageGeneration !== true) return []
+    return [{
+      id,
+      name: stringValue(model.name) ?? id,
+      ...(imageInfo.imageEngine === undefined ? {} : { imageEngine: imageInfo.imageEngine }),
+      ...(imageInfo.imageEdit === undefined ? {} : { imageEdit: imageInfo.imageEdit }),
+      imageGeneration: true,
+      aliases: Array.isArray(model.aliases) ? model.aliases : undefined,
+      serviceTiers: [],
+    } satisfies CpaModelCapability]
+  }))
+}
+
+function mergeImageModels(primary: readonly CpaImageModel[], secondary: readonly CpaImageModel[]): CpaImageModel[] {
+  const seen = new Set<string>()
+  return [...primary, ...secondary].filter(model => {
+    const key = `${model.engine}\u0000${model.id.trim().toLowerCase()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function inferredImageEngine(id: string): 'gpt' | 'gemini' | undefined {
+  const normalized = id.trim().toLowerCase()
+  if (normalized.startsWith('gpt-image-')) return 'gpt'
+  if (normalized.startsWith('gemini-') && normalized.includes('image')) return 'gemini'
+  return undefined
 }
 
 async function fetchAccounts(
@@ -1243,6 +1349,14 @@ function parseAccountModelsRequest(value: unknown): CpaAccountModelsRequest {
   const name = stringValue(raw.name)
   if (authIndex === undefined || name === undefined) throw new Error('CLIProXyAPI account auth_index and name are required')
   return { authIndex, name }
+}
+
+function firstStringValue(...values: readonly unknown[]): string | undefined {
+  for (const value of values) {
+    const result = stringValue(value)
+    if (result !== undefined) return result
+  }
+  return undefined
 }
 
 function stringValue(value: unknown): string | undefined {

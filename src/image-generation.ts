@@ -10,8 +10,20 @@ const SUPPORTED_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 
 export type ImageEngine = 'gpt' | 'gemini'
 export type CpaImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 
+/** Browser-safe description of one CPA image-capable model. */
+export interface CpaImageModel {
+  id: string
+  name: string
+  aliases?: readonly string[]
+  engine: ImageEngine
+  supportsGenerate: boolean
+  supportsEdit?: boolean
+}
+
 export interface CpaImageGenerationRequest {
   engine: ImageEngine
+  /** Exact CPA model id; omitted for the legacy engine default. */
+  model?: string
   prompt: string
   aspectRatio?: string
   imageSize?: string
@@ -27,6 +39,8 @@ export interface CpaReferenceImage {
 
 export interface CpaImageEditRequest {
   engine: ImageEngine
+  /** Exact CPA model id; omitted for the legacy engine default. */
+  model?: string
   prompt: string
   referenceImages: readonly CpaReferenceImage[]
   aspectRatio?: string
@@ -38,9 +52,13 @@ export interface CpaImageEditRequest {
 export interface CpaGeneratedImage {
   data: Uint8Array
   mediaType: CpaImageMediaType
+  /** Canonical CPA model used for the request, when the Host resolved one. */
+  model?: string
 }
 
 export interface CpaImageGenerationService {
+  /** Optional for 0.4.x compatibility; present when the provider exposes a catalog. */
+  listModels?(signal?: AbortSignal): Promise<readonly CpaImageModel[]>
   generate(request: CpaImageGenerationRequest): Promise<CpaGeneratedImage>
   /** Optional for 0.4.x compatibility; present when the provider supports editing. */
   edit?(request: CpaImageEditRequest): Promise<CpaGeneratedImage>
@@ -53,6 +71,8 @@ interface CpaImageGenerationRoute {
 
 interface ImageGenerationDeps {
   fetchImpl?: typeof fetch
+  /** Host-owned image catalog; never called from the browser. */
+  listModels?: (signal: AbortSignal) => Promise<readonly CpaImageModel[]>
 }
 
 type RecordLike = Record<string, unknown>
@@ -66,7 +86,52 @@ export function createCpaImageGenerationService(
   deps: ImageGenerationDeps = {},
 ): CpaImageGenerationService {
   const fetchImpl = deps.fetchImpl ?? globalThis.fetch
-  return {
+  let cachedImageModels: readonly CpaImageModel[] | undefined
+  const listModels = async (signal?: AbortSignal): Promise<readonly CpaImageModel[]> => {
+    if (deps.listModels === undefined) return []
+    const value = await deps.listModels(signal ?? new AbortController().signal)
+    cachedImageModels = normalizeImageModels(value)
+    return cachedImageModels
+  }
+
+  const resolveImageModel = async (
+    engine: ImageEngine,
+    requested: string | undefined,
+    signal: AbortSignal,
+    operation: 'generation' | 'editing',
+  ): Promise<string> => {
+    const fallback = defaultModelOf(engine)
+    const modelId = normalizedOption(requested)
+    let models: readonly CpaImageModel[] = modelId === undefined ? (cachedImageModels ?? []) : []
+    if (modelId !== undefined && deps.listModels !== undefined) {
+      try {
+        models = await listModels(signal)
+      } catch (error) {
+        if (modelId === fallback) return fallback
+        throw new LlmError(`CPA image ${operation} model catalog is unavailable`, 'INVALID_REQUEST', { cause: error })
+      }
+    }
+    if (modelId === undefined) {
+      return models.find(model => model.engine === engine && sameModelId(model.id, fallback) && model.supportsGenerate)?.id
+        ?? models.find(model => model.engine === engine && model.supportsGenerate)?.id
+        ?? fallback
+    }
+    if (models.length === 0) {
+      if (modelId === fallback) return fallback
+      throw new LlmError(`CPA image ${operation} model "${modelId}" is unavailable`, 'INVALID_REQUEST')
+    }
+    const match = models.find(model => model.engine === engine
+      && model.supportsGenerate
+      && (sameModelId(model.id, modelId) || model.aliases?.some(alias => sameModelId(alias, modelId))))
+    if (match === undefined) throw new LlmError(`CPA image ${operation} model "${modelId}" is unavailable`, 'INVALID_REQUEST')
+    if (operation === 'editing' && match.supportsEdit === false) {
+      throw new LlmError(`CPA image model "${modelId}" does not support editing`, 'UNSUPPORTED_OPTION')
+    }
+    return match.id
+  }
+
+  const service: CpaImageGenerationService = {
+    ...(deps.listModels === undefined ? {} : { listModels }),
     async generate(request) {
       if (request.signal.aborted) throw abortError()
       const prompt = request.prompt.trim()
@@ -77,6 +142,7 @@ export function createCpaImageGenerationService(
 
       const route = resolveRoute(request.engine)
       if (route === undefined) throw new LlmError(`CPA image route for engine "${request.engine}" is unavailable`, 'INVALID_REQUEST')
+      const model = await resolveImageModel(request.engine, request.model, request.signal, 'generation')
       const apiKey = await readRequiredCredential(readCredential, route.apiKeyEnv)
 
       if (request.engine === 'gpt') {
@@ -88,7 +154,7 @@ export function createCpaImageGenerationService(
           signal: request.signal,
           headers: cpaHeaders(apiKey),
           body: JSON.stringify({
-            model: GPT_MODEL,
+            model,
             prompt,
             n: 1,
             output_format: 'png',
@@ -96,7 +162,7 @@ export function createCpaImageGenerationService(
             quality: 'auto',
           }),
         })
-        return parseGptImage(response, fetchImpl, request.signal)
+        return { ...(await parseGptImage(response, fetchImpl, request.signal)), model }
       }
 
       const imageConfig = geminiImageConfigOf(request)
@@ -105,7 +171,7 @@ export function createCpaImageGenerationService(
         signal: request.signal,
         headers: cpaHeaders(apiKey),
         body: JSON.stringify({
-          model: GEMINI_MODEL,
+          model,
           messages: [{ role: 'user', content: prompt }],
           stream: false,
           ...(imageConfig === undefined ? {} : {
@@ -114,7 +180,7 @@ export function createCpaImageGenerationService(
           }),
         }),
       })
-      return parseGeminiImage(response)
+      return { ...parseGeminiImage(response), model }
     },
 
     async edit(request) {
@@ -127,6 +193,7 @@ export function createCpaImageGenerationService(
       const referenceImages = checkedReferenceImages(request.referenceImages)
       const route = resolveRoute(request.engine)
       if (route === undefined) throw new LlmError(`CPA image route for engine "${request.engine}" is unavailable`, 'INVALID_REQUEST')
+      const model = await resolveImageModel(request.engine, request.model, request.signal, 'editing')
       const apiKey = await readRequiredCredential(readCredential, route.apiKeyEnv)
 
       if (request.engine === 'gpt') {
@@ -139,7 +206,7 @@ export function createCpaImageGenerationService(
           const bytes = new Uint8Array(image.data)
           form.append(field, new Blob([bytes], { type: image.mediaType }), `reference-${index + 1}.${extensionOf(image.mediaType)}`)
         })
-        form.append('model', GPT_MODEL)
+        form.append('model', model)
         form.append('prompt', prompt)
         form.append('size', request.size ?? request.imageSize ?? '1024x1024')
         form.append('quality', 'auto')
@@ -149,7 +216,7 @@ export function createCpaImageGenerationService(
           headers: cpaHeaders(apiKey, false),
           body: form,
         }, 'CPA image editing')
-        return parseGptImage(response, fetchImpl, request.signal, 'CPA image editing')
+        return { ...(await parseGptImage(response, fetchImpl, request.signal, 'CPA image editing')), model }
       }
 
       const imageConfig = geminiImageConfigOf(request)
@@ -165,16 +232,49 @@ export function createCpaImageGenerationService(
         signal: request.signal,
         headers: cpaHeaders(apiKey),
         body: JSON.stringify({
-          model: GEMINI_MODEL,
+          model,
           messages: [{ role: 'user', content }],
           stream: false,
           modalities: ['image'],
           ...(imageConfig === undefined ? {} : { image_config: imageConfig }),
         }),
       }, 'CPA image editing')
-      return parseGeminiImage(response, 'CPA image editing')
+      return { ...parseGeminiImage(response, 'CPA image editing'), model }
     },
   }
+  return service
+}
+
+function defaultModelOf(engine: ImageEngine): string {
+  return engine === 'gpt' ? GPT_MODEL : GEMINI_MODEL
+}
+
+function normalizeImageModels(value: readonly CpaImageModel[]): CpaImageModel[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap(candidate => {
+    if (typeof candidate !== 'object' || candidate === null) return []
+    const id = normalizedOption(candidate.id)
+    const name = normalizedOption(candidate.name) ?? id
+    const engine = candidate.engine
+    const key = id?.toLowerCase()
+    if (id === undefined || name === undefined || id.length > 256 || name.length > 256 || (engine !== 'gpt' && engine !== 'gemini') || candidate.supportsGenerate !== true || key === undefined || seen.size >= 256 || seen.has(key)) return []
+    seen.add(key)
+    const rawAliases: readonly unknown[] = Array.isArray(candidate.aliases) ? candidate.aliases : []
+    const aliases = [...new Set(rawAliases.flatMap((alias: unknown) => typeof alias === 'string' && normalizedOption(alias) !== undefined ? [normalizedOption(alias)!] : []))]
+    return [{
+      id,
+      name,
+      ...(aliases.length === 0 ? {} : { aliases }),
+      engine,
+      supportsGenerate: true,
+      ...(candidate.supportsEdit === undefined ? {} : { supportsEdit: candidate.supportsEdit === true }),
+    }]
+  })
+}
+
+function sameModelId(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
 }
 
 /**
