@@ -8,7 +8,13 @@ The plugin automatically retrieves the model list from CLIProxyAPI, so models do
 
 ## Usage
 
-### Install from a pinned Git commit
+### Install from a pinned Git release tag (Recommended)
+
+```sh
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+```
+
+Or install from a pinned Git commit:
 
 ```sh
 dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<40-character-commit>"
@@ -24,10 +30,10 @@ dsh --profile web
 
 ### Update an existing installation
 
-Replace `<40-character-commit>` with a new, verified commit and run `dsh plugin add` again:
+Replace the tag or commit with a new, verified target and run `dsh plugin add` again:
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<new-40-character-commit>"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
 ```
 
 Do not run an unscoped `dsh plugin --profile web update`, because it may update other plugins in the profile at the same time.
@@ -55,31 +61,32 @@ The **Refresh** action synchronizes the model catalog, account status, and accou
 
 ## Additive features
 
-This project keeps only the following additions on top of the official CLIProxyAPI Provider:
+This project provides the following secondary developments and enhancements on top of the official CLIProxyAPI Provider:
 
-### 1. Account quota display
+### 1. Account quota & health display
 
-- Shows account status, plan, account identity, and quota windows in Settings; Codex five-hour and weekly windows are shown separately when both are returned.
-- Shows the current account and quota in the message composer.
-- Clicking the account status strip lists and switches to other accounts that support the current model.
-- Uses status colors and quota progress bars for available, quota-low, and unavailable accounts.
-- Hides the composer account strip when no account supports the current model.
+- **Multi-window quota parsing**: Shows account status, subscription tier, account identity, and quota windows in Settings; Codex 5-hour and weekly windows are parsed concurrently and clearly labeled.
+- **Composer indicator & sliding-window stats**: Displays current model account binding, quota progress bar, and recent sliding-window request statistics directly in the input composer, with responsive collapse on narrow layouts.
+- **Account switcher popup**: Clicking the composer account status strip opens a switcher modal to view and switch between other available accounts supporting the current model.
+- **Three-color health indicators**: Uses clear color indications (green for healthy, yellow for low quota, red for exhausted/unavailable) with progress bars.
+- **Periodic host synchronization & stale warnings**: Polls host account snapshots periodically to keep the Web UI current, with explicit visual cues for stale refreshes or failed syncs.
+- **Auto-hiding**: Automatically hides the composer status indicator when no account supports the selected model.
 
-### 2. Speed modes
+### 2. Speed modes (Dynamic service tiers)
 
-- Provides **Standard / Fast** modes for models that report the `priority` service tier.
-- Fast mode is forwarded by the Harness Host; standard mode keeps the normal model request path.
-- Availability depends on the model capability information returned by CLIProxyAPI.
-- Supports slug and alias-based speed capability mapping while mirroring CPA session speed state in real time.
+- Provides seamless **Standard / Fast** mode switching for models supporting the `priority` service tier.
+- Fast mode requests are forwarded by the Harness Host; standard mode preserves the default model execution path.
+- Supports dynamic speed capability mapping via model slugs and aliases, mirroring CPA speed status in session runtime.
 - Automatically invalidates stale speed capabilities during catalog refresh while preserving manually configured model capacities and parameters.
-- Fully compatible with DeepSeek Harness RC.8+ Replay Envelopes and error classification.
+- Fully compatible with DeepSeek Harness 0.1.2 Replay Envelopes and error classification.
 
-### 3. Image Generation Service
+### 3. Image generation core service (CPA Image Service)
 
-- Exports the stable `./image-generation` entry contract and `dshCpaImageGeneration` service token for downstream consumers.
-- Unified routing for GPT (`images/generations`) and Gemini (`chat/completions`) CPA image generation protocols.
-- Projects image-model capabilities from the CPA catalog and exposes a redacted `listModels()` plus `model` validation to downstream consumers; new models in the same protocol family no longer require ImageGen ID changes. CPA metadata such as `image_generation`/`image_engine` is preferred, with compatibility support for the three legacy image IDs.
-- Automatically filters image-only models from standard model selectors and settings to avoid conflicts with text conversation flows.
+- **Unified service contract**: Exports the stable `./image-generation` entry contract and `dshCpaImageGeneration` service token for direct, credential-free downstream integration (e.g. by `dsh-image-gen`).
+- **Dual protocol support**: Handles both GPT (`images/generations`) and Gemini (`chat/completions`) image generation protocols.
+- **Dynamic CPA image model discovery**: Dynamically inspects and projects image model metadata from the CLIProxyAPI catalog, exposing redacted `listModels()` and model validation; new image models added upstream are recognized automatically without requiring downstream ImageGen plugin constant changes or updates.
+- **Reference image & editing support**: Core service provides full support for the `edit` contract, accepting and parsing multiple conversation attachments / source images in sequence.
+- **Model selector filtering**: Image-only models are automatically hidden from regular chat model selectors and settings to prevent accidental conversational misuse.
 
 ## Current test coverage
 

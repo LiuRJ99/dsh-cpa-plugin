@@ -8,7 +8,13 @@
 
 ## 使用方式
 
-### 从固定 Git commit 安装
+### 从固定 Git Release Tag 安装（推荐）
+
+```sh
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+```
+
+也可以从固定 Git commit 安装：
 
 ```sh
 dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<40位commit>"
@@ -24,10 +30,10 @@ dsh --profile web
 
 ### 更新已有安装
 
-更新时将 `<40位commit>` 替换成新的、已验证的 commit，并重新执行 `dsh plugin add`：
+更新时将版本 tag 或 commit 替换为新的已验证目标，并重新执行 `dsh plugin add`：
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<新的40位commit>"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
 ```
 
 不要使用无差别的 `dsh plugin --profile web update`，因为它可能同时更新 profile 中的其他插件。
@@ -55,31 +61,32 @@ dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#<新的40位commit>"
 
 ## 二次开发功能
 
-本项目在官方 CLIProxyAPI Provider 基础上只保留以下二次开发功能：
+本项目在官方 CLIProxyAPI Provider 基础上提供以下二次开发与增强特性：
 
-### 1. 账号额度显示
+### 1. 账号额度与健康状态展示
 
-- 在设置页显示账号状态、套餐、账号身份和额度窗口；Codex 同时存在 5 小时和周额度时分别显示两个窗口。
-- 在消息输入栏显示当前模型对应的账号和额度。
-- 点击账号状态条可以查看并切换到其他支持当前模型的账号。
-- 使用绿色、黄色、红色状态和额度进度条展示可用、额度偏低和不可用状态。
-- 没有账号支持当前模型时，输入栏账号状态条自动隐藏。
+- **多窗口额度解析**：在设置页清晰展示账号状态、套餐、身份和额度窗口；针对 Codex 同时存在的 **5 小时窗口**与**周额度窗口**进行并发解析并分别标注周期。
+- **输入栏常驻状态与滑动窗口统计**：在消息输入框显示当前模型绑定的账号状态、额度进度条与近期滑动窗口请求统计，并提供响应式折叠优化。
+- **账号快速切换弹窗**：点击账号状态条可呼出切换面板（Account Switcher Popup），实时查看并切换到支持当前模型的其他可用账号。
+- **健康度与三色进度条**：使用绿色（充足）、黄色（偏低）、红色（耗尽/不可用）直观展示各账号额度水位。
+- **实时同步与陈旧提示**：定期轮询 Host 账号快照以保证 Web UI 额度最新，检测到刷新失效或陈旧数据时明确标注 Stale 状态。
+- **智能隐藏**：无账号支持当前模型时，输入栏状态指示器自动静默隐藏。
 
-### 2. 速度模式
+### 2. 速度模式（Dynamic Service Tiers）
 
-- 对支持 `priority` 服务等级的模型提供“标准 / 快速”模式。
+- 对支持 `priority` 服务等级的模型提供“标准 / 快速”模式无缝切换。
 - 快速模式由 Harness Host 侧转发，普通模式不改变原有模型请求流程。
-- 具体可用性取决于 CLIProxyAPI 返回的模型能力信息。
-- 支持基于模型 slug/别名映射速度能力，并在会话中实时镜像 CPA 速度状态。
+- 支持基于模型 slug 与动态别名映射速度能力，并在会话中实时镜像 CPA 速度状态。
 - 模型目录刷新时自动清理与失效过期的速度能力，同时完整保留用户手动配置的模型容量与参数。
-- 深度适配 DeepSeek Harness RC.8+ 的 Replay Envelope 与错误分类机制。
+- 深度适配 DeepSeek Harness 0.1.2 的 Replay Envelope 与错误分类机制。
 
-### 3. 图像生成服务
+### 3. 图像生成底座服务（CPA Image Service）
 
-- 导出稳定的 `./image-generation` 入口契约与 `dshCpaImageGeneration` 服务标识，供下游消费方直接集成。
-- 统一承接 GPT (`images/generations`) 与 Gemini (`chat/completions`) 双路 CPA 图像生成协议。
-- 从 CPA 模型目录投影图片模型能力，向下游提供脱敏的 `listModels()` 与 `model` 校验；新增同协议图片模型无需 ImageGen 再维护 ID 常量。优先读取 CPA 返回的 `image_generation`/`image_engine` 等元数据，同时兼容现有三个图片模型 ID。
-- 在常规模型选择器与设置中自动过滤仅图像模型（Image-only models），避免与文本对话流冲突。
+- **统一服务契约**：导出稳定的 `./image-generation` 入口契约与 `dshCpaImageGeneration` 服务标识，供下游消费方（如 `dsh-image-gen`）免凭据直接集成。
+- **双引擎协议承接**：统一承接 GPT (`images/generations`) 与 Gemini (`chat/completions`) 双路 CPA 图像生成协议。
+- **动态图片模型发现（Dynamic CPA Image Models）**：自动从 CLIProxyAPI 模型目录动态提取并投影图片模型元数据，向下游提供脱敏的 `listModels()` 与 `model` 校验；CPA 服务端新增同协议图片模型时，无需 ImageGen 等下游插件重新硬编码或发布新版本即可直接感知与使用。
+- **参考图与垫图编辑能力**：核心服务打通图片修改链路，支持 `edit` 契约，自动接收并提取多张前置参考图/附件传递给上游 API。
+- **模型选择器隔离**：在常规文本对话模型选择器与设置中自动过滤仅图像模型（Image-only models），避免与文本对话流冲突。
 
 ## 当前测试范围
 
