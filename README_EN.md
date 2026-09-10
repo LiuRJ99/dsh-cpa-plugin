@@ -6,6 +6,43 @@ Adds a `CLIProxyAPI` model provider based on the OpenAI Responses API to DeepSee
 
 The plugin automatically retrieves the model list from CLIProxyAPI, so models do not need to be added or maintained manually. This project is not published to npm; cross-machine installation must use an approved pinned Git commit or tarball.
 
+## Fork Enhancements (v0.4.1)
+
+> This repository is a maintained and enhanced fork of [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) (maintained at [`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin), current version `v0.4.1`). While preserving the upstream provider core, it adds account quota visualization, speed modes, and the image-generation core service that downstream plugins consume.
+
+### 1. Installation from this Fork
+
+```bash
+# Recommended: install the verified v0.4.1 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+```
+
+Do not install this fork by bare package name or from `#main`.
+
+### 2. Delta from upstream
+
+| | upstream | this fork `v0.4.1` |
+|---|---|---|
+| Account quota UI | absent | Multi-window quota parsing, three-color progress bars, account switcher popup |
+| Speed modes | absent | Standard / Fast switching on the `priority` service tier |
+| Image-generation service | absent | Exports the `./image-generation` contract and the `dshCpaImageGeneration` service token |
+| Reference-image editing | absent | An `edit()` contract covering both the GPT and Gemini protocol paths |
+| Image-model discovery | absent | Projects image-model metadata dynamically from the CPA catalog |
+| DSH `0.1.2-rc.1` compatibility | — | Adapted to the Replay Envelope and error-classification contract |
+
+The individual enhancements are detailed under [Additive features](#additive-features) below.
+
+### 3. Syncing with upstream
+
+```bash
+git remote add upstream https://github.com/router-for-me/dsh-cliproxyapi-provider.git
+git fetch upstream
+git merge upstream/main     # after merging, re-apply the fork's compatibility and quota-parsing fixes
+pnpm run typecheck && pnpm run bundle
+```
+
+After any merge, re-verify that all three additive features still work — upstream has none of them, so a conflicting change will not surface as a merge conflict.
+
 ## Usage
 
 ### Install from a pinned Git release tag (Recommended)

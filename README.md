@@ -6,6 +6,43 @@
 
 插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，跨机器安装必须使用经过验证的固定 Git commit 或 tarball。
 
+## Fork 增强特性（v0.4.1）
+
+> 本项目为 [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) 的维护与增强分支（维护仓库：[`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin)，当前版本 `v0.4.1`）。在保留上游 Provider 基础能力的前提下，重点补齐账号额度可视化、速度模式、以及供下游插件消费的图像生成底座服务。
+
+### 1. 本 Fork 安装方式
+
+```bash
+# 推荐：安装经过完整验证的 v0.4.1 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+```
+
+不要使用裸包名或 `#main` 安装本 fork。
+
+### 2. 与上游的差异
+
+| | 上游 | 本 fork `v0.4.1` |
+|---|---|---|
+| 账号额度界面 | 无 | 多窗口额度解析 + 三色进度条 + 账号切换弹窗 |
+| 速度模式 | 无 | `priority` 服务等级的标准/快速切换 |
+| 图像生成服务 | 无 | 导出 `./image-generation` 契约与 `dshCpaImageGeneration` 服务标识 |
+| 参考图编辑 | 无 | `edit()` 契约，统一承接 GPT 与 Gemini 双协议 |
+| 图片模型发现 | 无 | 从 CPA 目录动态投影图片模型元数据 |
+| DSH `0.1.2-rc.1` 兼容 | — | 已适配 Replay Envelope 与错误分类机制 |
+
+具体增强条目见下方 [二次开发功能](#二次开发功能)。
+
+### 3. 与上游同步
+
+```bash
+git remote add upstream https://github.com/router-for-me/dsh-cliproxyapi-provider.git
+git fetch upstream
+git merge upstream/main     # 合并后必须重新叠加本 fork 的兼容声明与额度解析修复
+pnpm run typecheck && pnpm run bundle
+```
+
+合并后请回归验证「二次开发功能」三条增强仍然可用——上游没有这些能力，冲突不会自动暴露。
+
 ## 使用方式
 
 ### 从固定 Git Release Tag 安装（推荐）
