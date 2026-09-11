@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.4.2] - 2026-09-11
+
+### Changed
+
+- Relaxed 15 `@deepseek-ai/dsh-*` peerDependencies to `>=0.1.2-rc.1 <0.2.0` to support newer DSH host versions.
+
+## [0.4.1] - 2026-09-09
 
 ### Features
 
