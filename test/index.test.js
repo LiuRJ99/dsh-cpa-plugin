@@ -203,6 +203,14 @@ test('bundled Host artifact keeps the CPA image service but not the OpenAI Image
   assert.match(imageServiceBundle, /gpt-image-2/u)
 })
 
+test('Web bundle carries the temporary client-connection RPC compatibility patch', async () => {
+  const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+
+  assert.match(patch, /- id: connection\n  name: '@deepseek-ai\/dsh-client-connection'\n  inject: \[webRuntime, webServer\]/u)
+  assert.match(patch, /official connection package fixes the/u)
+  assert.match(patch, /registration context/u)
+})
+
 test('Antigravity quota summary prefers the daily endpoint that matches the CPA panel', async () => {
   const hostSource = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
   const daily = 'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary'

@@ -1,3 +1,19 @@
+# Temporary compatibility patch for DSH 0.1.5's client-connection regression.
+#
+# @deepseek-ai/dsh-client-connection.rpc.handle() still registers a private
+# channel through owner.webServer, but the 0.1.5 Web connection entry only
+# injects webRuntime. In a third-party plugin's ctx.inject(['connection'], ...)
+# scope that makes every private RPC registration fail with
+# "cannot get property webServer without inject"; the request then falls
+# through the SPA fallback as HTTP 405.
+#
+# Keep this host-side patch until the official connection package fixes the
+# registration context. Remove it after that release is adopted; do not add
+# client fallbacks that would hide a broken RPC transport.
+- id: connection
+  name: '@deepseek-ai/dsh-client-connection'
+  inject: [webRuntime, webServer]
+
 # Install the CLIProxyAPI catalog discovery and browser settings integration.
 # The built-in llm-pi-ai plugin remains the sole owner of provider routes.
 - insert:

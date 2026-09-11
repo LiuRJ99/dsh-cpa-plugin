@@ -6,22 +6,22 @@
 
 插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，跨机器安装必须使用经过验证的固定 Git commit 或 tarball。
 
-## Fork 增强特性（v0.4.1）
+## Fork 增强特性（v0.4.3）
 
-> 本项目为 [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) 的维护与增强分支（维护仓库：[`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin)，当前版本 `v0.4.1`）。在保留上游 Provider 基础能力的前提下，重点补齐账号额度可视化、速度模式、以及供下游插件消费的图像生成底座服务。
+> 本项目为 [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) 的维护与增强分支（维护仓库：[`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin)，当前版本 `v0.4.3`）。在保留上游 Provider 基础能力的前提下，重点补齐账号额度可视化、速度模式、以及供下游插件消费的图像生成底座服务。
 
 ### 1. 本 Fork 安装方式
 
 ```bash
-# 推荐：安装经过完整验证的 v0.4.1 Release Tag
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+# 推荐：安装经过完整验证的 v0.4.3 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
 ```
 
 不要使用裸包名或 `#main` 安装本 fork。
 
 ### 2. 与上游的差异
 
-| | 上游 | 本 fork `v0.4.1` |
+| | 上游 | 本 fork `v0.4.3` |
 |---|---|---|
 | 账号额度界面 | 无 | 多窗口额度解析 + 三色进度条 + 账号切换弹窗 |
 | 速度模式 | 无 | `priority` 服务等级的标准/快速切换 |
@@ -48,7 +48,7 @@ pnpm run typecheck && pnpm run bundle
 ### 从固定 Git Release Tag 安装（推荐）
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
 ```
 
 也可以从固定 Git commit 安装：
@@ -70,7 +70,7 @@ dsh --profile web
 更新时将版本 tag 或 commit 替换为新的已验证目标，并重新执行 `dsh plugin add`：
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.1"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
 ```
 
 不要使用无差别的 `dsh plugin --profile web update`，因为它可能同时更新 profile 中的其他插件。

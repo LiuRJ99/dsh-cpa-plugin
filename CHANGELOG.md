@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-09-11
+
+### Fixed
+
+- Added a temporary Web bundle patch for the DSH 0.1.5 `@deepseek-ai/dsh-client-connection` RPC registration regression. `connection.rpc.handle()` can otherwise fail to mount the `/cpa` channel because its `webServer` dependency is missing from the Web connection entry, which surfaces to the client as HTTP 405. Remove the patch after the official connection package fixes its registration context.
+
 ## [0.4.2] - 2026-09-11
 
 ### Changed
