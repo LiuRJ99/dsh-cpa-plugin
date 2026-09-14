@@ -70,7 +70,7 @@ export function modelProfileOf(entry, options = {}) {
   return {
     id,
     name: nonEmptyString(entry?.display_name, entry?.name, entry?.description, id),
-    contextWindow: positiveInteger(entry?.max_context_window, entry?.context_window, options.defaultContextWindow),
+    contextWindow: positiveInteger(entry?.context_window, entry?.max_context_window, options.defaultContextWindow),
     maxTokens: positiveInteger(entry?.max_output_tokens, entry?.max_completion_tokens, entry?.max_tokens, options.defaultMaxTokens),
     input: inputModalitiesOf(entry, options.defaultInput ?? ['text']),
     ...(reasoningEfforts ? { reasoningEfforts } : {}),

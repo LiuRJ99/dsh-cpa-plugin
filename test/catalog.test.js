@@ -33,6 +33,12 @@ test('maps model metadata and applies safe fallbacks', () => {
   })
 })
 
+test('prefers the model context window over the catalog maximum context window', () => {
+  assert.equal(modelProfileOf({
+    slug: 'gpt-context-test', context_window: 272000, max_context_window: 872000,
+  }).contextWindow, 272000)
+})
+
 test('extracts modalities and reasoning from the Codex catalog response', () => {
   const models = readCodexCatalog({ models: [
     {

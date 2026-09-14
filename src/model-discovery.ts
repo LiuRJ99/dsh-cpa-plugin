@@ -99,7 +99,7 @@ function readModels(value: unknown): LlmDiscoveredModel[] {
     if (id === undefined || seen.has(id)) continue
     seen.add(id)
     const name = text(entry?.display_name, entry?.name, entry?.description, id)
-    const contextWindow = positiveInteger(entry?.max_context_window, entry?.context_window, entry?.context_length)
+    const contextWindow = positiveInteger(entry?.context_window, entry?.max_context_window, entry?.context_length)
     const maxTokens = positiveInteger(entry?.max_output_tokens, entry?.max_completion_tokens, entry?.max_tokens)
     const imageInfo = imageModelInfoOf(entry) as {
       imageGeneration?: boolean

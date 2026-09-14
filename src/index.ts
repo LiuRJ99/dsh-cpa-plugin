@@ -13,7 +13,7 @@ import type { RpcResult } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-settings'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
 import { imageModelInfoOf, isImageOnlyModel } from './catalog.js'
-import { streamCpaFast } from './cpa-fast-stream.ts'
+import { isCodexResponsesModel, streamCpaFast } from './cpa-fast-stream.ts'
 import type { CpaFastRoute } from './cpa-fast-stream.ts'
 import {
   createCpaImageGenerationService,
@@ -247,19 +247,22 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
 
   // The speed control is an external-plugin concern. The optional execution
   // bridge seeds session state for older DSH runtimes; newer runtimes also carry
-  // the first-class serviceTier request field through the waterfall. The normal
-  // route remains untouched when the user leaves the model at Standard.
+  // the first-class serviceTier request field through the waterfall. GPT/Codex
+  // text models use the Codex wire protocol in both modes; only Fast mode adds
+  // the priority service tier. Other provider/model families remain untouched.
   const handleCpaStream = (options: CpaStreamOptions, next: () => CpaStream): CpaStream => {
     const currentConfig = effectiveConfig(ctx, config)
-    if (options.provider !== currentConfig.providerId || options.sessionId === undefined || fastModelIds.has(options.model) === false) return next()
+    if (options.provider !== currentConfig.providerId || isImageOnlyModel(options.model)) return next()
+    const codexModel = fastModelIds.has(options.model) || isCodexResponsesModel(options.model)
+    if (!codexModel) return next()
     const extension = options as CpaStreamOptions & CpaRequestExtension
-    const key = speedKey(String(options.sessionId), options.model)
+    const key = options.sessionId === undefined ? undefined : speedKey(String(options.sessionId), options.model)
     const requestedTier = extension.serviceTier === PRIORITY_SERVICE_TIER
-    if (requestedTier) speedBySessionModel.set(key, 'fast')
-    if (!requestedTier && speedBySessionModel.get(key) !== 'fast') return next()
+    const fast = requestedTier || (key !== undefined && speedBySessionModel.get(key) === 'fast')
+    if (requestedTier && key !== undefined) speedBySessionModel.set(key, 'fast')
     const route = cpaFastRoute(ctx, currentConfig)
     if (route === undefined) return next()
-    return streamCpaFast(options, route, readCredential, () => ctx.get('attachments'))
+    return streamCpaFast(options, route, readCredential, () => ctx.get('attachments'), fast ? PRIORITY_SERVICE_TIER : undefined)
   }
   // The workspace Harness package and the published plugin dependency may
   // carry different branded declaration copies during local development.
@@ -484,13 +487,13 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
     const id = stringValue(model?.id)
     if (id === undefined) return []
     const reasoning = model?.reasoningEfforts === false
-      ? []
-      : objectKeys(model?.reasoningEfforts)
+      ? undefined
+      : reasoningMap(model?.reasoningEfforts)
     return [{
       id,
       ...stringValue(model?.name) === undefined ? {} : { name: stringValue(model?.name) },
       ...Array.isArray(model?.input) ? { input: model.input.filter(value => value === 'text' || value === 'image') } : {},
-      ...reasoning.length === 0 ? {} : { reasoningEfforts: reasoning },
+      ...reasoning === undefined ? {} : { reasoningEfforts: reasoning },
       ...positiveNumber(model?.contextWindow) === undefined ? {} : { contextWindow: positiveNumber(model?.contextWindow) },
       ...positiveNumber(model?.maxTokens) === undefined ? {} : { maxTokens: positiveNumber(model?.maxTokens) },
     }]
@@ -1369,10 +1372,14 @@ function modelEndpoint(value: string): string {
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
-function objectKeys(value: unknown): string[] {
+function reasoningMap(value: unknown): Readonly<Record<string, string | null>> | undefined {
   const record = valueObject(value)
-  if (record === undefined) return []
-  return Object.keys(record).filter(key => key !== 'off' && record[key] !== false)
+  if (record === undefined) return undefined
+  const result: Record<string, string | null> = {}
+  for (const [key, wire] of Object.entries(record)) {
+    if (wire === null || typeof wire === 'string') result[key] = wire
+  }
+  return Object.keys(result).length === 0 ? undefined : result
 }
 
 function positiveNumber(value: unknown): number | undefined {

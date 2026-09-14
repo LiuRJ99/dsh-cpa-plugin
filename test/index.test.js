@@ -19,6 +19,7 @@ import {
 } from '../src/index.js'
 import { IMAGE_GENERATION_SERVICE } from '../lib/image-generation.js'
 import { parseCodexQuota } from '../lib/index.js'
+import { discoverCpaModels } from '../src/model-discovery.ts'
 
 async function resolvedConfig(overrides = {}) {
   const result = await Config['~standard'].validate(overrides)
@@ -315,6 +316,25 @@ test('initial discovery requests the fixed rich catalog and returns full capabil
   }
 })
 
+test('compatibility discovery prefers the model context window over the catalog maximum', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ models: [{
+    slug: 'gpt-context-test',
+    context_window: 272000,
+    max_context_window: 872000,
+  }] }), { status: 200 })
+  try {
+    const models = await discoverCpaModels({
+      baseURL: 'http://127.0.0.1:8317/v1',
+      apiKey: 'secret-key',
+      signal: new AbortController().signal,
+    }, async () => undefined)
+    assert.equal(models[0].contextWindow, 272000)
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('provider composition still exposes the Host image service through lib/index.js seams', async () => {
   const harness = createContext({ providers: {} }, 'initial-secret')
   apply(harness.ctx, await resolvedConfig())
@@ -345,10 +365,32 @@ test('legacy llm/stream image models now fall through to downstream middleware',
   harness.dispose()
 })
 
-test('ordinary llm/stream text models still fall through to downstream middleware', async () => {
+test('ordinary GPT llm/stream text models use the Codex protocol without priority', async () => {
   const harness = createContext({ providers: {
     CLIProxyAPI: managedProfile({
       models: [{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol', input: ['text'] }],
+    }),
+  } }, 'initial-secret')
+  apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI' }))
+  const sentinel = { ok: true }
+  assert.notEqual(
+    harness.runMiddleware('llm/stream', {
+      provider: 'CLIProxyAPI',
+      model: 'gpt-5.6-sol',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'hello' }],
+        source: { kind: 'user' },
+      })],
+    }, sentinel),
+    sentinel,
+  )
+  harness.dispose()
+})
+
+test('non-Codex text models still fall through to downstream middleware', async () => {
+  const harness = createContext({ providers: {
+    CLIProxyAPI: managedProfile({
+      models: [{ id: 'claude-sonnet-4', name: 'Claude Sonnet 4', input: ['text'] }],
     }),
   } }, 'initial-secret')
   apply(harness.ctx, await resolvedConfig())
@@ -356,7 +398,8 @@ test('ordinary llm/stream text models still fall through to downstream middlewar
   assert.equal(
     harness.runMiddleware('llm/stream', {
       provider: 'CLIProxyAPI',
-      model: 'gpt-5.6-sol',
+      model: 'claude-sonnet-4',
+      sessionId: 'claude-session',
       messages: [createUserMessage({
         content: [{ type: 'text', text: 'hello' }],
         source: { kind: 'user' },

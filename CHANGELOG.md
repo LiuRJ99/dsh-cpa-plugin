@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-09-14
+
+### Fixed
+
+- Routed GPT/Codex text models through the CLIProxyAPI Codex Responses endpoint in both Standard and Fast modes; Fast mode alone adds `service_tier: priority`.
+- Preserved Codex request metadata and behavior, including WebSocket sessions, encrypted reasoning content, prompt-cache keys, parallel tool calls, and provider-aware tool-call IDs.
+- Accepted plain or keyless CLIProxyAPI authentication without fabricating a ChatGPT account ID, and mapped reasoning usage back into the DSH token contract.
+- Preferred `context_window` consistently in both rich and compatibility model discovery paths.
+
+### Verification
+
+- `pnpm check`: 92 tests passed.
+- `pnpm typecheck`, `pnpm bundle`, and the package contract verification passed.
+
 ## [0.4.3] - 2026-09-11
 
 ### Fixed

@@ -6,28 +6,29 @@ Adds a `CLIProxyAPI` model provider based on the OpenAI Responses API to DeepSee
 
 The plugin automatically retrieves the model list from CLIProxyAPI, so models do not need to be added or maintained manually. This project is not published to npm; cross-machine installation must use an approved pinned Git commit or tarball.
 
-## Fork Enhancements (v0.4.3)
+## Fork Enhancements (v0.4.4)
 
-> This repository is a maintained and enhanced fork of [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) (maintained at [`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin), current version `v0.4.3`). While preserving the upstream provider core, it adds account quota visualization, speed modes, and the image-generation core service that downstream plugins consume.
+> This repository is a maintained and enhanced fork of [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) (maintained at [`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin), current version `v0.4.4`). While preserving the upstream provider core, it adds Codex Responses protocol behavior for GPT routes, account quota visualization, speed modes, and the image-generation core service that downstream plugins consume.
 
 ### 1. Installation from this Fork
 
 ```bash
-# Recommended: install the verified v0.4.3 Release Tag
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
+# Recommended: install the verified v0.4.4 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
 ```
 
 Do not install this fork by bare package name or from `#main`.
 
 ### 2. Delta from upstream
 
-| | upstream | this fork `v0.4.3` |
+| | upstream | this fork `v0.4.4` |
 |---|---|---|
 | Account quota UI | absent | Multi-window quota parsing, three-color progress bars, account switcher popup |
 | Speed modes | absent | Standard / Fast switching on the `priority` service tier |
 | Image-generation service | absent | Exports the `./image-generation` contract and the `dshCpaImageGeneration` service token |
 | Reference-image editing | absent | An `edit()` contract covering both the GPT and Gemini protocol paths |
 | Image-model discovery | absent | Projects image-model metadata dynamically from the CPA catalog |
+| GPT/Codex protocol alignment | Generic OpenAI Responses | Codex endpoint, WebSocket sessions, reasoning metadata, and Fast/Standard tier behavior |
 | DSH `0.1.2-rc.1` compatibility | — | Adapted to the Replay Envelope and error-classification contract |
 
 The individual enhancements are detailed under [Additive features](#additive-features) below.
@@ -48,7 +49,7 @@ After any merge, re-verify that all three additive features still work — upstr
 ### Install from a pinned Git release tag (Recommended)
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
 ```
 
 Or install from a pinned Git commit:
@@ -70,7 +71,7 @@ dsh --profile web
 Replace the tag or commit with a new, verified target and run `dsh plugin add` again:
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.3"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
 ```
 
 Do not run an unscoped `dsh plugin --profile web update`, because it may update other plugins in the profile at the same time.
@@ -112,7 +113,7 @@ This project provides the following secondary developments and enhancements on t
 ### 2. Speed modes (Dynamic service tiers)
 
 - Provides seamless **Standard / Fast** mode switching for models supporting the `priority` service tier.
-- Fast mode requests are forwarded by the Harness Host; standard mode preserves the default model execution path.
+- GPT/Codex text models are forwarded by the Harness Host through the Codex Responses protocol in both modes; Fast mode additionally injects the `priority` service tier, while other models keep their existing request path.
 - Supports dynamic speed capability mapping via model slugs and aliases, mirroring CPA speed status in session runtime.
 - Automatically invalidates stale speed capabilities during catalog refresh while preserving manually configured model capacities and parameters.
 - Fully compatible with DeepSeek Harness 0.1.2 Replay Envelopes and error classification.

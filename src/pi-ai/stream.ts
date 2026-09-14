@@ -15,6 +15,7 @@ export function mapUsage(usage: PiUsage): TokenUsage {
   return {
     inputTokens: usage.input,
     outputTokens: usage.output,
+    ...usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning },
     ...usage.cacheRead > 0 ? { cacheReadTokens: usage.cacheRead } : {},
     ...usage.cacheWrite > 0 ? { cacheWriteTokens: usage.cacheWrite } : {},
   }
