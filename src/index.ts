@@ -145,11 +145,15 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     capabilitiesCache = value
     fastModelIds.clear()
     for (const model of value.models) {
+      // `priority` is a generic capability label in CPA's catalog. It is not
+      // proof that a model speaks the Codex Responses protocol; keep the
+      // Codex route limited to the model families this adapter understands.
+      if (!isCodexResponsesModel(model.id)) continue
       if (!model.serviceTiers.some(tier => tier.id === PRIORITY_SERVICE_TIER)) continue
       if (model.imageGeneration === true || isImageOnlyModel(model.id)) continue
       fastModelIds.add(model.id)
       for (const alias of model.aliases ?? []) {
-        if (!isImageOnlyModel(alias)) fastModelIds.add(alias)
+        if (isCodexResponsesModel(alias) && !isImageOnlyModel(alias)) fastModelIds.add(alias)
       }
     }
     return value
@@ -481,19 +485,21 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
   const api = stringValue(profile?.api) ?? 'openai-responses'
   if (api !== 'openai-responses') return undefined
   const baseURL = stringValue(profile?.baseURL) ?? modelEndpoint(config.endpoint)
+  const headers = stringHeaders(profile?.headers)
+  const reasoning = stringValue(profile?.reasoning)
   const rawModels = Array.isArray(profile?.models) ? profile.models : []
   const models = rawModels.flatMap(modelValue => {
     const model = valueObject(modelValue)
     const id = stringValue(model?.id)
     if (id === undefined) return []
-    const reasoning = model?.reasoningEfforts === false
+    const modelReasoning = model?.reasoningEfforts === false
       ? undefined
       : reasoningMap(model?.reasoningEfforts)
     return [{
       id,
       ...stringValue(model?.name) === undefined ? {} : { name: stringValue(model?.name) },
       ...Array.isArray(model?.input) ? { input: model.input.filter(value => value === 'text' || value === 'image') } : {},
-      ...reasoning === undefined ? {} : { reasoningEfforts: reasoning },
+      ...modelReasoning === undefined ? {} : { reasoningEfforts: modelReasoning },
       ...positiveNumber(model?.contextWindow) === undefined ? {} : { contextWindow: positiveNumber(model?.contextWindow) },
       ...positiveNumber(model?.maxTokens) === undefined ? {} : { maxTokens: positiveNumber(model?.maxTokens) },
     }]
@@ -502,6 +508,8 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
     provider: config.providerId,
     baseURL: modelEndpoint(baseURL),
     apiKeyEnv: stringValue(profile?.apiKeyEnv) ?? NATIVE_MODEL_KEY_REF,
+    ...headers === undefined ? {} : { headers },
+    ...reasoning === undefined ? {} : { reasoning },
     models,
   }
 }
@@ -1360,6 +1368,18 @@ function firstStringValue(...values: readonly unknown[]): string | undefined {
     if (result !== undefined) return result
   }
   return undefined
+}
+
+function stringHeaders(value: unknown): Readonly<Record<string, string>> | undefined {
+  const record = valueObject(value)
+  if (record === undefined) return undefined
+  const result: Record<string, string> = {}
+  for (const [key, headerValue] of Object.entries(record)) {
+    // This is an internal bootstrap marker and must never reach the provider.
+    if (key.toLowerCase() === 'x-dsh-provider-cpa-sync') continue
+    if (typeof headerValue === 'string') result[key] = headerValue
+  }
+  return Object.keys(result).length === 0 ? undefined : result
 }
 
 function stringValue(value: unknown): string | undefined {

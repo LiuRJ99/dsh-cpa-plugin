@@ -3,7 +3,7 @@ export type CpaLocaleKey =
   | 'menu.aria' | 'menu.model' | 'menu.effort' | 'menu.speed'
   | 'model.familyGpt' | 'model.familyClaude' | 'model.familyGemini' | 'model.familyDeepSeek' | 'model.familyOther' | 'model.imageUnsupported'
   | 'effort.providerDefault' | 'speed.standard' | 'speed.fast' | 'speed.fastDescription'
-  | 'account.status' | 'account.available' | 'account.quotaLow' | 'account.switcher'
+  | 'account.status' | 'account.available' | 'account.quotaLow' | 'account.switcher' | 'account.selectionInfo'
   | 'account.quota' | 'account.quotaUnknown' | 'account.quotaOverall' | 'account.quotaFiveHour' | 'account.quotaWeekly' | 'account.quotaStale' | 'account.nextReset'
   | 'account.disabled' | 'account.unavailable'
   | 'account.cooldown'
@@ -50,6 +50,7 @@ export const en: Record<CpaLocaleKey, string> = {
   'account.available': 'Available',
   'account.quotaLow': 'Quota low',
   'account.switcher': 'Accounts supporting the current model',
+  'account.selectionInfo': 'Display preference only; CPA still chooses the request account.',
   'account.quota': 'Quota {quota}',
   'account.quotaUnknown': '—',
   'account.quotaOverall': 'Quota',
@@ -140,6 +141,7 @@ export const zh: Record<CpaLocaleKey, string> = {
   'account.available': '可用',
   'account.quotaLow': '额度不足',
   'account.switcher': '支持当前模型的账号',
+  'account.selectionInfo': '仅切换显示偏好；实际请求仍由 CPA 自动选择账号。',
   'account.quota': '额度：{quota}',
   'account.quotaUnknown': '—',
   'account.quotaOverall': '额度',

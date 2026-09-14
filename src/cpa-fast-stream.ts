@@ -18,7 +18,10 @@ import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { Api, AssistantMessageEventStream, Context as PiContext, Model, OpenAICodexResponsesOptions, ThinkingLevelMap } from '@earendil-works/pi-ai'
 import { toPiContext } from './pi-ai/context.ts'
 import { toStreamChunks } from './pi-ai/stream.ts'
+import { isCodexResponsesModel } from './model-capabilities.ts'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+
+export { isCodexResponsesModel } from './model-capabilities.ts'
 
 type PiGenerateOptions = Parameters<typeof toPiContext>[0]
 
@@ -38,6 +41,10 @@ export interface CpaFastRoute {
   provider: string
   baseURL: string
   apiKeyEnv?: string
+  /** Profile headers that must survive the Codex route handoff. */
+  headers?: Readonly<Record<string, string>>
+  /** Provider-level reasoning default, when one is configured. */
+  reasoning?: string
   models: readonly CpaFastModel[]
 }
 
@@ -58,7 +65,9 @@ export async function* streamCpaFast(
 
   const configured = route.models.find(model => model.id === options.model)
   const effortMap = reasoningEfforts(configured)
-  const requestedEffort = options.reasoningEffort === undefined ? undefined : String(options.reasoningEffort)
+  const requestedEffort = options.reasoningEffort === undefined
+    ? route.reasoning === undefined ? undefined : String(route.reasoning)
+    : String(options.reasoningEffort)
   if (requestedEffort !== undefined && requestedEffort !== 'off'
     && (!Object.prototype.hasOwnProperty.call(effortMap, requestedEffort) || effortMap[requestedEffort] === null)) {
     throw new LlmError(
@@ -68,10 +77,14 @@ export async function* streamCpaFast(
   }
 
   const model = cpaModel(route, configured, options.model, effortMap)
+  const reasoningEffort = codexReasoningEffortOf(effortMap, requestedEffort)
+  // The llm/stream waterfall runs before dsh-llm materializes adapter defaults;
+  // fall back to the configured model cap so profile maxTokens is not lost here.
+  const maxOutputTokens = maxOutputTokensOf(options.maxTokens ?? configured?.maxTokens)
   const containsImage = options.messages.some(message => contentHasImage(message.content))
   const attachments = containsImage ? resolveAttachments?.() : undefined
   if (containsImage && attachments === undefined) {
-    throw new LlmError('CLIProXyAPI image input requires the attachment service', 'UNSUPPORTED_CONTENT')
+    throw new LlmError('CLIProxyAPI image input requires the attachment service', 'UNSUPPORTED_CONTENT')
   }
   const context = attachments === undefined
     ? toPiContext(options as unknown as PiGenerateOptions)
@@ -84,12 +97,18 @@ export async function* streamCpaFast(
   const codexStream = await loadCodexStream(route.provider)
   const events = codexStream(model, context, {
     ...apiKey === undefined ? {} : { apiKey },
-    ...requestedEffort === undefined || requestedEffort === 'off' ? {} : { reasoningEffort: requestedEffort as OpenAICodexResponsesOptions['reasoningEffort'] },
+    ...reasoningEffort === undefined ? {} : { reasoningEffort },
     ...options.temperature === undefined ? {} : { temperature: options.temperature },
     ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
+    ...maxOutputTokens === undefined ? {} : {
+      onPayload: (payload: unknown) => addMaxOutputTokens(payload, maxOutputTokens),
+    },
     ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
     signal: options.signal,
-    headers: attributionHeaders(),
+    headers: {
+      ...route.headers,
+      ...attributionHeaders(),
+    },
     ...serviceTier === undefined ? {} : { serviceTier },
   } satisfies OpenAICodexResponsesOptions)
   // `toStreamChunks` is compiled against the workspace Harness declaration;
@@ -146,6 +165,36 @@ function supportedReasoningEfforts(effortMap: Readonly<Record<string, string | n
   return Object.keys(effortMap).filter(effort => effort !== 'off' && effortMap[effort] !== null)
 }
 
+/**
+ * Codex uses `none` on the wire for DSH's canonical `off` level. If the
+ * catalog did not declare an off mapping, keep the field absent rather than
+ * inventing a capability for a model that does not advertise one.
+ */
+function codexReasoningEffortOf(
+  effortMap: Readonly<Record<string, string | null>>,
+  requestedEffort: string | undefined,
+): OpenAICodexResponsesOptions['reasoningEffort'] | undefined {
+  const effective = requestedEffort ?? (typeof effortMap.off === 'string' ? 'off' : undefined)
+  if (effective === undefined) return undefined
+  if (effective === 'off') return typeof effortMap.off === 'string' ? 'none' : undefined
+  return effective as OpenAICodexResponsesOptions['reasoningEffort']
+}
+
+/** Keep the same minimum output-token behavior as pi-ai's OpenAI Responses adapter. */
+function maxOutputTokensOf(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined
+  return Math.max(16, Math.floor(value))
+}
+
+/** Add the Codex field through its public payload hook instead of patching dependency source. */
+function addMaxOutputTokens(payload: unknown, maxOutputTokens: number): unknown {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload
+  return {
+    ...(payload as Record<string, unknown>),
+    max_output_tokens: maxOutputTokens,
+  }
+}
+
 export function codexBaseURL(baseURL: string): string {
   const normalized = baseURL.trim().replace(/\/+$/, '')
   if (normalized.endsWith('/codex/responses') || normalized.endsWith('/codex') || normalized.endsWith('/backend-api')) {
@@ -153,12 +202,6 @@ export function codexBaseURL(baseURL: string): string {
   }
   const withoutV1 = normalized.endsWith('/v1') ? normalized.slice(0, -'/v1'.length) : normalized
   return `${withoutV1}/backend-api`
-}
-
-/** Identify model namespaces that the Codex Responses backend conventionally serves. */
-export function isCodexResponsesModel(id: string): boolean {
-  const normalized = id.trim().toLowerCase().replace(/^openai[/:.]/, '')
-  return /^(?:gpt-|o[134](?:-|$)|chatgpt-|codex-)/.test(normalized)
 }
 
 const EXTRACT_ACCOUNT_ID_PATCH = `function extractAccountId(token) {

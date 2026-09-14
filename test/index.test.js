@@ -476,6 +476,47 @@ test('capability-loaded image-only models do not enter fast stream routing', asy
   }
 })
 
+test('priority capability on a non-Codex model does not enter the Codex route', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), 'http://127.0.0.1:8317/v1/models?client_version=0.144.0')
+    return new Response(JSON.stringify({ models: [{
+      id: 'claude-sonnet-4',
+      service_tiers: [{ id: 'priority' }],
+    }] }), { status: 200 })
+  }
+  try {
+    const harness = createContext({ providers: {
+      CLIProxyAPI: managedProfile({
+        apiKeyEnv: 'SYNTHETIC_CPA_REF',
+        models: [{ id: 'claude-sonnet-4', name: 'Claude Sonnet 4', input: ['text'] }],
+      }),
+    } }, 'SYNTHETIC_CPA_MARKER')
+    apply(harness.ctx, await resolvedConfig({ providerId: 'CLIProxyAPI', registerDiscovery: false }))
+    const capabilityProvider = harness.provided.get('dshModelCapabilities')
+    await capabilityProvider.listModelCapabilities(new AbortController().signal)
+
+    const sentinel = { ok: true }
+    assert.equal(
+      harness.runMiddleware('llm/stream', {
+        provider: 'CLIProxyAPI',
+        model: 'claude-sonnet-4',
+        sessionId: 'claude-priority-session',
+        serviceTier: 'priority',
+        signal: new AbortController().signal,
+        messages: [createUserMessage({
+          content: [{ type: 'text', text: 'hello' }],
+          source: { kind: 'user' },
+        })],
+      }, sentinel),
+      sentinel,
+    )
+    harness.dispose()
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('model discovery preserves manual capacities already stored for the provider', async () => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async () => new Response(JSON.stringify({ models: [{

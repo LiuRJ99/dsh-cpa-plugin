@@ -1,6 +1,7 @@
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ClientConnectionRpc } from '@deepseek-ai/dsh-client-connection/client'
 import type { CpaAccount, CpaAccountModelsView, CpaAccountsView, CpaConfigView, CpaInputModality, CpaModelCapabilitiesView, CpaModelCapability, CpaModelInputCapabilitiesView, CpaRefreshIntervalView, CpaSpeed } from './protocol.ts'
+import { isCodexResponsesModel } from '../model-capabilities.ts'
 import type { ModelCapability } from '../model-capabilities.ts'
 
 const QUOTA_CACHE_KEY = 'dsh-cliproxyapi:quota-cache:v1'
@@ -423,9 +424,12 @@ export class CpaClient {
 }
 
 export function hasFastSpeedCapability(model: string, capabilities: readonly CpaModelCapability[]): boolean {
+  const wanted = model.trim().toLowerCase()
+  if (wanted === '' || !isCodexResponsesModel(model)) return false
   return capabilities.some(entry => {
     const ids = [entry.id, ...(entry.aliases ?? [])]
-    return ids.includes(model) && entry.serviceTiers.some(tier => tier.id === 'priority')
+    return ids.some(id => isCodexResponsesModel(id) && id.trim().toLowerCase() === wanted)
+      && entry.serviceTiers.some(tier => tier.id === 'priority')
   })
 }
 

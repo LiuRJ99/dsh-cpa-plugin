@@ -41,6 +41,7 @@ const CSS = `
 .dsh-cpa-account-option-quota-value{font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
 .dsh-cpa-account-option-check{flex:0 0 14px;color:var(--dsw-alias-label-primary);text-align:center}
 .dsh-cpa-account-menu-error{padding:5px 7px;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:15px}
+.dsh-cpa-account-menu-note{padding:5px 7px 7px;border-bottom:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:14px}
 .dsh-cpa-model-trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:220px;height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;outline:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;font-weight:500;cursor:pointer}
 .dsh-cpa-model-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .dsh-cpa-model-trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}

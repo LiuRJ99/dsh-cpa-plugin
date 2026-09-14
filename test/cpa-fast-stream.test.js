@@ -134,11 +134,13 @@ test('builds Codex-shaped standard requests with keyless CPA auth and usage meta
       system: 'system',
       sessionId: 'standard-session',
       reasoningEffort: 'high',
+      maxTokens: 123,
       signal: new AbortController().signal,
       messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
     }, {
       provider: 'cpa',
       baseURL: 'http://127.0.0.1:8317/v1',
+      headers: { 'x-cpa-tenant': 'tenant-a' },
       models: [{ id: 'gpt-test', reasoningEfforts: { high: 'ultra' } }],
     }, async () => undefined, undefined, undefined)) chunks.push(chunk)
 
@@ -146,6 +148,7 @@ test('builds Codex-shaped standard requests with keyless CPA auth and usage meta
     assert.equal(socket.url, 'ws://127.0.0.1:8317/backend-api/codex/responses')
     assert.equal(socket.sent[0].store, false)
     assert.equal(socket.sent[0].service_tier, undefined)
+    assert.equal(socket.sent[0].max_output_tokens, 123)
     assert.equal(socket.sent[0].reasoning.effort, 'ultra')
     assert.equal(socket.sent[0].prompt_cache_key, 'standard-session')
     assert.equal(socket.sent[0].include[0], 'reasoning.encrypted_content')
@@ -153,6 +156,7 @@ test('builds Codex-shaped standard requests with keyless CPA auth and usage meta
     const headers = new Headers(socket.options.headers)
     assert.equal(headers.get('authorization'), 'Bearer dsh-cliproxyapi-no-key')
     assert.equal(headers.get('chatgpt-account-id'), null)
+    assert.equal(headers.get('x-cpa-tenant'), 'tenant-a')
     assert.equal(headers.get('originator'), 'pi')
     assert.equal(headers.get('session-id'), 'standard-session')
     assert.equal(headers.get('openai-beta'), 'responses_websockets=2026-02-06')
@@ -162,6 +166,53 @@ test('builds Codex-shaped standard requests with keyless CPA auth and usage meta
       reasoningTokens: 7,
     })
     assert.equal(chunks.at(-1)?.type, 'finish')
+  } finally {
+    globalThis.WebSocket = previousWebSocket
+  }
+})
+
+test('uses the configured model output cap before adapter defaults are materialized', async () => {
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = FakeWebSocket
+  FakeWebSocket.instances = []
+  try {
+    for await (const _chunk of streamCpaFast({
+      provider: 'cpa',
+      model: 'gpt-test',
+      sessionId: 'configured-cap-session',
+      signal: new AbortController().signal,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'bounded' }] }],
+    }, {
+      provider: 'cpa',
+      baseURL: 'http://127.0.0.1:8317/v1',
+      models: [{ id: 'gpt-test', maxTokens: 321 }],
+    }, async () => undefined, undefined, undefined)) {}
+
+    assert.equal(FakeWebSocket.instances[0].sent[0].max_output_tokens, 321)
+  } finally {
+    globalThis.WebSocket = previousWebSocket
+  }
+})
+
+test('sends the canonical none reasoning value when DSH selects off', async () => {
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = FakeWebSocket
+  FakeWebSocket.instances = []
+  try {
+    for await (const _chunk of streamCpaFast({
+      provider: 'cpa',
+      model: 'gpt-test',
+      sessionId: 'off-session',
+      reasoningEffort: 'off',
+      signal: new AbortController().signal,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'no thinking' }] }],
+    }, {
+      provider: 'cpa',
+      baseURL: 'http://127.0.0.1:8317/v1',
+      models: [{ id: 'gpt-test', reasoningEfforts: { off: 'none', high: 'ultra' } }],
+    }, async () => undefined, undefined, undefined)) {}
+
+    assert.equal(FakeWebSocket.instances[0].sent[0].reasoning.effort, 'none')
   } finally {
     globalThis.WebSocket = previousWebSocket
   }

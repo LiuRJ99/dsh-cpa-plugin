@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { Config as PiAiConfig } from '@deepseek-ai/dsh-llm-pi-ai'
 import { isImageOnlyModel } from '../src/catalog.js'
+import { isCodexResponsesModel } from '../src/model-capabilities.ts'
 
 test('client bundle registers a lifecycle-owned Settings section', async () => {
   let definition
@@ -146,6 +147,25 @@ test('unified refresh invalidates stale model capability requests', async () => 
   assert.match(source, /if \(this\.capabilitiesPromise === pending\) this\.capabilitiesPromise = undefined/)
 })
 
+test('Fast capability stays limited to Codex model namespaces', async () => {
+  const { hasFastSpeedCapability } = await loadTsModule(
+    new URL('../src/client/cpa-client.ts', import.meta.url),
+    {
+      '@deepseek-ai/dsh-client-store': {},
+      '../model-capabilities.ts': { isCodexResponsesModel },
+    },
+  )
+  const capabilities = [{
+    id: 'claude-sonnet-4',
+    serviceTiers: [{ id: 'priority' }],
+  }, {
+    id: 'gpt-5.6-sol',
+    serviceTiers: [{ id: 'priority' }],
+  }]
+  assert.equal(hasFastSpeedCapability('claude-sonnet-4', capabilities), false)
+  assert.equal(hasFastSpeedCapability('gpt-5.6-sol', capabilities), true)
+})
+
 test('composer input left slot exposes a model-scoped account quota switcher', async () => {
   const source = await readFile(new URL('../src/client/index.ts', import.meta.url), 'utf8')
   const indicator = await readFile(new URL('../src/client/cpa-account-indicator.tsx', import.meta.url), 'utf8')
@@ -162,6 +182,7 @@ test('composer input left slot exposes a model-scoped account quota switcher', a
   assert.match(indicator, /onClick/)
   assert.match(indicator, /loadAccountModels/)
   assert.match(indicator, /selectAccount/)
+  assert.match(indicator, /account\.selectionInfo/)
 })
 
 test('model popup does not expose the non-binding account picker', async () => {

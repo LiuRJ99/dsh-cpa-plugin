@@ -8,6 +8,12 @@
 export const MODEL_CAPABILITY_SERVICE = 'dshModelCapabilities'
 export const PRIORITY_SERVICE_TIER = 'priority'
 
+/** Identify model namespaces that the CPA Codex Responses route can serve. */
+export function isCodexResponsesModel(id: string): boolean {
+  const normalized = id.trim().toLowerCase().replace(/^openai[/:.]/, '')
+  return /^(?:gpt-|o[134](?:-|$)|chatgpt-|codex-)/.test(normalized)
+}
+
 export interface ModelServiceTier {
   id: string
   name?: string

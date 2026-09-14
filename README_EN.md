@@ -6,22 +6,22 @@ Adds a `CLIProxyAPI` model provider based on the OpenAI Responses API to DeepSee
 
 The plugin automatically retrieves the model list from CLIProxyAPI, so models do not need to be added or maintained manually. This project is not published to npm; cross-machine installation must use an approved pinned Git commit or tarball.
 
-## Fork Enhancements (v0.4.4)
+## Fork Enhancements (v0.4.5)
 
-> This repository is a maintained and enhanced fork of [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) (maintained at [`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin), current version `v0.4.4`). While preserving the upstream provider core, it adds Codex Responses protocol behavior for GPT routes, account quota visualization, speed modes, and the image-generation core service that downstream plugins consume.
+> This repository is a maintained and enhanced fork of [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) (maintained at [`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin), current version `v0.4.5`). While preserving the upstream provider core, it adds Codex Responses protocol behavior for GPT routes, account quota visualization, speed modes, and the image-generation core service that downstream plugins consume.
 
 ### 1. Installation from this Fork
 
 ```bash
-# Recommended: install the verified v0.4.4 Release Tag
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
+# Recommended: install the verified v0.4.5 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.5"
 ```
 
 Do not install this fork by bare package name or from `#main`.
 
 ### 2. Delta from upstream
 
-| | upstream | this fork `v0.4.4` |
+| | upstream | this fork `v0.4.5` |
 |---|---|---|
 | Account quota UI | absent | Multi-window quota parsing, three-color progress bars, account switcher popup |
 | Speed modes | absent | Standard / Fast switching on the `priority` service tier |
@@ -49,7 +49,7 @@ After any merge, re-verify that all three additive features still work — upstr
 ### Install from a pinned Git release tag (Recommended)
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.5"
 ```
 
 Or install from a pinned Git commit:
@@ -71,7 +71,7 @@ dsh --profile web
 Replace the tag or commit with a new, verified target and run `dsh plugin add` again:
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.4"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.5"
 ```
 
 Do not run an unscoped `dsh plugin --profile web update`, because it may update other plugins in the profile at the same time.
@@ -105,7 +105,7 @@ This project provides the following secondary developments and enhancements on t
 
 - **Multi-window quota parsing**: Shows account status, subscription tier, account identity, and quota windows in Settings; Codex 5-hour and weekly windows are parsed concurrently and clearly labeled.
 - **Composer indicator & sliding-window stats**: Displays current model account binding, quota progress bar, and recent sliding-window request statistics directly in the input composer, with responsive collapse on narrow layouts.
-- **Account switcher popup**: Clicking the composer account status strip opens a switcher modal to view and switch between other available accounts supporting the current model.
+- **Account switcher popup**: Clicking the composer account status strip opens a switcher modal to view and change the displayed quota account for the current model. CLIProxyAPI does not currently expose a supported per-request account-pinning API, so this preference does not change global request routing.
 - **Three-color health indicators**: Uses clear color indications (green for healthy, yellow for low quota, red for exhausted/unavailable) with progress bars.
 - **Periodic host synchronization & stale warnings**: Polls host account snapshots periodically to keep the Web UI current, with explicit visual cues for stale refreshes or failed syncs.
 - **Auto-hiding**: Automatically hides the composer status indicator when no account supports the selected model.

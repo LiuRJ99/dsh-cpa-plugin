@@ -137,6 +137,7 @@ export function CpaAccountIndicator({ cpa, directory, sessionId, t }: Props) {
       </button>
       {open ? (
         <div className="dsh-cpa-account-menu" role="menu" aria-label={t('account.switcher')}>
+          <div className="dsh-cpa-account-menu-note" role="note">{t('account.selectionInfo')}</div>
           {liveSupported.map(option => <AccountOption key={option.authIndex} account={option} model={model} selected={option.authIndex === account.authIndex} onChoose={choose} t={t} />)}
           {error !== null ? <div className="dsh-cpa-account-menu-error" role="alert">{error}</div> : null}
         </div>

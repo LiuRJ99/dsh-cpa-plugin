@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-09-14
+
+### Fixed
+
+- Restricted the Codex Responses interception and Fast capability UI to GPT/Codex model namespaces, so Claude, Gemini, and other non-Codex models advertising a generic `priority` tier continue through their original provider route.
+- Preserved configured CPA profile headers on Codex requests, mapped DSH `off` reasoning to the Codex wire value `none`, and injected `max_output_tokens` through pi-ai's public payload hook so the configured output limit is not silently dropped.
+
+### Clarified
+
+- The account picker is explicitly a display preference until CLIProxyAPI exposes a supported per-request account-pinning API; selecting an account does not mutate global CPA routing.
+
 ## [0.4.4] - 2026-09-14
 
 ### Fixed
