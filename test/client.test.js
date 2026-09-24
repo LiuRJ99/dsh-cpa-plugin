@@ -599,6 +599,18 @@ test('accountQuotaProgress scopes Antigravity pool windows to the selected model
   assert.equal(accountAvailability(unknownGroup, 'gemini-3-flash'), 'available')
 })
 
+test('accountQuotaProgress labels a Kimi monthly window without inventing a weekly row', async () => {
+  const { accountQuotaProgress } = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
+  const progress = accountQuotaProgress({ windows: [
+    { window: 'five_hour', remaining: 75, total: 100, unit: '%' },
+    { window: 'monthly', remaining: 87.5, total: 100, unit: '%' },
+  ] }, key => key)
+  assert.deepEqual(JSON.parse(JSON.stringify(progress)), [
+    { key: 'five_hour', label: 'account.quotaFiveHour', percent: 75 },
+    { key: 'monthly', label: 'account.quotaMonthly', percent: 87.5 },
+  ])
+})
+
 test('modelFamilyOf classifies CPA model ids consistently with the picker', async () => {
   const displayModule = await loadTsModule(new URL('../src/client/cpa-account-display.ts', import.meta.url), {})
   const { modelFamilyOf } = displayModule

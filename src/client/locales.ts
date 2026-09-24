@@ -4,7 +4,7 @@ export type CpaLocaleKey =
   | 'model.familyGpt' | 'model.familyClaude' | 'model.familyGemini' | 'model.familyDeepSeek' | 'model.familyOther' | 'model.imageUnsupported'
   | 'effort.providerDefault' | 'speed.standard' | 'speed.fast' | 'speed.fastDescription'
   | 'account.status' | 'account.available' | 'account.quotaLow' | 'account.switcher' | 'account.selectionInfo'
-  | 'account.quota' | 'account.quotaUnknown' | 'account.quotaOverall' | 'account.quotaFiveHour' | 'account.quotaWeekly' | 'account.quotaStale' | 'account.nextReset'
+  | 'account.quota' | 'account.quotaUnknown' | 'account.quotaOverall' | 'account.quotaFiveHour' | 'account.quotaWeekly' | 'account.quotaMonthly' | 'account.quotaStale' | 'account.nextReset'
   | 'account.disabled' | 'account.unavailable'
   | 'account.cooldown'
   | 'status.loading' | 'status.empty' | 'retry'
@@ -56,6 +56,7 @@ export const en: Record<CpaLocaleKey, string> = {
   'account.quotaOverall': 'Quota',
   'account.quotaFiveHour': '5h',
   'account.quotaWeekly': 'Weekly limit',
+  'account.quotaMonthly': 'Monthly limit',
   'account.quotaStale': 'quota refresh failed (showing last result)',
   'account.nextReset': 'Next reset {time}',
   'account.disabled': 'Disabled',
@@ -147,6 +148,7 @@ export const zh: Record<CpaLocaleKey, string> = {
   'account.quotaOverall': '额度',
   'account.quotaFiveHour': '5小时',
   'account.quotaWeekly': '周限额',
+  'account.quotaMonthly': '月限额',
   'account.quotaStale': '额度刷新失败（显示上次结果）',
   'account.nextReset': '下次重置 {time}',
   'account.disabled': '已禁用',

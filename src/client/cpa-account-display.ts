@@ -285,7 +285,8 @@ function compactQuotaWindow(windows: Array<[string, CpaQuotaWindow]>): [string, 
 function quotaWindowOrder(kind: string): number {
   if (kind === 'five_hour') return 0
   if (kind === 'weekly') return 1
-  return 2
+  if (kind === 'monthly') return 2
+  return 3
 }
 
 export function accountAvailabilityLabel(
@@ -346,12 +347,14 @@ function quotaWindowKind(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, '_')
   if (normalized === 'five_hour' || normalized === '5h' || normalized.includes('five_hour')) return 'five_hour'
   if (normalized === 'weekly' || normalized === 'week' || normalized.includes('week')) return 'weekly'
+  if (normalized === 'monthly' || normalized === 'month' || normalized.includes('month')) return 'monthly'
   return normalized
 }
 
 function quotaWindowLabel(kind: string, window: CpaQuotaWindow, t: Translate): string {
   if (kind === 'five_hour') return t('account.quotaFiveHour')
   if (kind === 'weekly') return t('account.quotaWeekly')
+  if (kind === 'monthly') return t('account.quotaMonthly')
   return window.window.trim() || t('account.quotaUnknown')
 }
 

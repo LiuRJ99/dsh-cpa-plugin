@@ -861,6 +861,21 @@ async function fetchAccountQuota(
     )
     return parseCodexQuota(body)
   }
+  if (provider === 'kimi' || provider === 'kimi-coding' || provider === 'kimi.com'
+    || provider === 'kimi-ai' || provider === 'kimi.ai') {
+    const kimiHost = provider === 'kimi-ai' || provider === 'kimi.ai' ? 'api.kimi.ai' : 'api.kimi.com'
+    const body = await callUpstream(
+      config,
+      readCredential,
+      account.authIndex,
+      'GET',
+      `https://${kimiHost}/coding/v1/usages`,
+      { Authorization: 'Bearer $TOKEN$', Accept: 'application/json' },
+      undefined,
+      signal,
+    )
+    return parseKimiQuota(body)
+  }
   return {}
 }
 
@@ -980,6 +995,92 @@ export function parseCodexQuota(body: unknown): AccountQuotaResult {
       ? {}
       : { plan: normalizePlan(stringValue(root.plan_type) ?? stringValue(root.planType)!) },
     ...quota === undefined ? {} : { quota },
+  }
+}
+
+/** Kimi Code has used both count-based and ratio-based `/usages` payloads. */
+export function parseKimiQuota(body: unknown): AccountQuotaResult {
+  const root = valueObject(body)
+  if (root === undefined) return {}
+  const windows = new Map<string, CpaQuotaWindow>()
+  const usages = valueObject(root.usages)
+  for (const [key, window] of [
+    ['limit_5h', 'five_hour'],
+    ['limit_7d', 'weekly'],
+    ['limit_month_total', 'monthly'],
+  ] as const) {
+    const entry = valueObject(usages?.[key])
+    const ratio = firstNumber(entry?.used_ratio, entry?.usedRatio)
+    if (ratio === undefined || ratio < 0 || ratio > 1) continue
+    const remaining = clampPercent((1 - ratio) * 100)
+    const resetAt = epochToIso(entry?.reset_time ?? entry?.resetTime)
+    windows.set(window, {
+      window,
+      remaining,
+      total: 100,
+      unit: '%',
+      exceeded: remaining <= 0,
+      ...resetAt === undefined ? {} : { resetAt },
+    })
+  }
+
+  // A legacy payload puts the subscription window in `usage`. It is weekly
+  // only when the provider supplies no explicit duration for that summary.
+  const summary = valueObject(root.usage)
+  const weekly = kimiCountWindow(summary, 'weekly')
+  if (weekly !== undefined && !windows.has('weekly')) windows.set('weekly', weekly)
+
+  // The official Kimi CLI reports subscription windows from `usages`.
+  // Older responses only carry the count-based five-hour limit in `limits`.
+  if (!windows.has('five_hour') && Array.isArray(root.limits)) {
+    for (const item of root.limits) {
+      const limit = valueObject(item)
+      const period = valueObject(limit?.window)
+      const duration = firstNumber(period?.duration, limit?.duration)
+      const unit = stringValue(period?.timeUnit) ?? stringValue(limit?.timeUnit)
+      if (duration === undefined || !/^TIME_UNIT_MINUTE$/i.test(unit ?? '') || Math.abs(duration - 300) > 1) continue
+      const fiveHour = kimiCountWindow(valueObject(limit?.detail) ?? limit, 'five_hour')
+      if (fiveHour !== undefined) windows.set('five_hour', fiveHour)
+      break
+    }
+  }
+
+  const ordered = ['five_hour', 'weekly', 'monthly'].flatMap(key => {
+    const window = windows.get(key)
+    return window === undefined ? [] : [window]
+  })
+  if (ordered.length === 0) return {}
+  const primary = ordered[0]
+  return {
+    quota: {
+      remaining: primary.remaining,
+      total: 100,
+      used: 100 - primary.remaining,
+      unit: '%',
+      exceeded: ordered.some(window => window.exceeded === true),
+      window: primary.window,
+      windows: ordered,
+      ...primary.resetAt === undefined ? {} : { resetAt: primary.resetAt },
+      ...primary.window !== 'five_hour' ? {} : { windowSeconds: 18_000 },
+    },
+  }
+}
+
+function kimiCountWindow(value: Record<string, unknown> | undefined, window: string): CpaQuotaWindow | undefined {
+  if (value === undefined) return undefined
+  const total = firstNumber(value.limit, value.total)
+  const reportedRemaining = firstNumber(value.remaining)
+  const used = firstNumber(value.used)
+  if (total === undefined || total <= 0 || (reportedRemaining === undefined && used === undefined)) return undefined
+  const remaining = clampPercent(100 * (reportedRemaining ?? total - used!) / total)
+  const resetAt = epochToIso(value.resetTime ?? value.reset_time ?? value.resetAt ?? value.reset_at)
+  return {
+    window,
+    remaining,
+    total: 100,
+    unit: '%',
+    exceeded: remaining <= 0,
+    ...resetAt === undefined ? {} : { resetAt },
   }
 }
 

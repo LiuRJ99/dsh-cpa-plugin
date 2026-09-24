@@ -18,7 +18,7 @@ import {
   apply,
 } from '../src/index.js'
 import { IMAGE_GENERATION_SERVICE } from '../lib/image-generation.js'
-import { parseCodexQuota } from '../lib/index.js'
+import { apply as applyCpaAddon, parseCodexQuota, parseKimiQuota } from '../lib/index.js'
 import { discoverCpaModels } from '../src/model-discovery.ts'
 
 async function resolvedConfig(overrides = {}) {
@@ -265,6 +265,88 @@ test('uses primary and secondary order when Codex omits window sizes', () => {
     { window: 'five_hour', remaining: 95 },
     { window: 'weekly', remaining: 75 },
   ])
+})
+
+test('parses Kimi Code legacy weekly and rolling five-hour limits', () => {
+  const result = parseKimiQuota({
+    usage: { limit: '1000', used: '400', remaining: '600', resetTime: '2026-09-30T00:00:00Z' },
+    limits: [{
+      window: { duration: 300, timeUnit: 'TIME_UNIT_MINUTE' },
+      detail: { limit: '100', used: '25', remaining: '75', resetTime: '2026-09-24T10:00:00Z' },
+    }],
+  })
+  assert.deepEqual(result.quota?.windows?.map(({ window, remaining }) => ({ window, remaining })), [
+    { window: 'five_hour', remaining: 75 },
+    { window: 'weekly', remaining: 60 },
+  ])
+  assert.equal(result.quota?.remaining, 75)
+  assert.equal(result.quota?.windowSeconds, 18000)
+})
+
+test('parses Kimi Code ratio pools without inventing absent windows or treating code share as another cap', () => {
+  const result = parseKimiQuota({
+    limits: [{
+      window: { duration: 300, timeUnit: 'TIME_UNIT_MINUTE' },
+      detail: { limit: '100', used: '25', remaining: '75' },
+    }],
+    usages: {
+      limit_5h: { used_ratio: 0, reset_time: '2026-09-24T10:00:00Z' },
+      limit_month_total: { used_ratio: 0.125, reset_time: '2026-10-17T00:00:00Z' },
+      limit_month_code: { used_ratio: 0.5, reset_time: '2026-10-17T00:00:00Z' },
+    },
+  })
+  assert.deepEqual(result.quota?.windows?.map(({ window, remaining }) => ({ window, remaining })), [
+    { window: 'five_hour', remaining: 100 },
+    { window: 'monthly', remaining: 87.5 },
+  ])
+  assert.equal(result.quota?.exceeded, false)
+  assert.deepEqual(parseKimiQuota({ usages: { limit_7d: { used_ratio: 1 } } }).quota?.windows?.map(({ window, remaining }) => ({ window, remaining })), [
+    { window: 'weekly', remaining: 0 },
+  ])
+  assert.equal(parseKimiQuota({ usages: { limit_5h: { used_ratio: 99 } } }).quota, undefined)
+})
+
+test('refreshes Kimi Code quota through the account-scoped CPA api-call in both regions', async () => {
+  const previousFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init })
+    if (String(url).endsWith('/v0/management/auth-files')) {
+      return new Response(JSON.stringify({ files: [
+        { id: 'kimi-account', auth_index: 'kimi-auth-index', provider: 'kimi', status: 'active' },
+        { id: 'kimi-global-account', auth_index: 'kimi-global-index', provider: 'kimi-ai', status: 'active' },
+      ] }), { status: 200 })
+    }
+    assert.ok(String(url).endsWith('/v0/management/api-call'))
+    const request = JSON.parse(init.body)
+    const global = request.auth_index === 'kimi-global-index'
+    assert.deepEqual(request, {
+      auth_index: global ? 'kimi-global-index' : 'kimi-auth-index',
+      method: 'GET',
+      url: `https://api.kimi.${global ? 'ai' : 'com'}/coding/v1/usages`,
+      header: { Authorization: 'Bearer $TOKEN$', Accept: 'application/json' },
+    })
+    return new Response(JSON.stringify({ status_code: 200, body: JSON.stringify({ usages: { limit_7d: { used_ratio: 0.4 } } }) }), { status: 200 })
+  }
+  const harness = createContext({ providers: { CLIProxyAPI: managedProfile() } }, 'synthetic-management-key')
+  try {
+    const handle = applyCpaAddon(harness.ctx, {
+      endpoint: 'http://127.0.0.1:8317',
+      providerId: 'CLIProxyAPI',
+      managementKeyEnv: 'CPA_MANAGEMENT_KEY',
+      timeoutMs: 8000,
+      refreshIntervalMs: 300000,
+      registerDiscovery: false,
+    })
+    const view = await handle.refreshAccounts(new AbortController().signal)
+    assert.equal(calls.length, 3)
+    assert.equal(view.accounts[0].quota?.windows?.[0].window, 'weekly')
+    assert.equal(view.accounts[0].quota?.windows?.[0].remaining, 60)
+    assert.equal(view.accounts[1].quota?.windows?.[0].remaining, 60)
+  } finally {
+    harness.dispose()
+    globalThis.fetch = previousFetch
+  }
 })
 
 test('registers rich discovery without competing for the provider directory', async () => {

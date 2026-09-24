@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6] - 2026-09-24
+
+### Added
+
+- Fetch Kimi Code quota through CPA's account-scoped `api-call` on the matching mainland or international host, and display the 5-hour, weekly, and monthly windows supplied by `/coding/v1/usages`.
+- Parse both legacy count-based and current ratio-based Kimi usage responses without treating the monthly Code share as a separate allowance.
+
 ## [0.4.5] - 2026-09-14
 
 ### Fixed
