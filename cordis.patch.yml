@@ -1,7 +1,7 @@
-# Temporary compatibility patch for DSH 0.1.5's client-connection regression.
+# Compatibility patch for the DSH 0.1.7-rc.1 Web connection entry.
 #
 # @deepseek-ai/dsh-client-connection.rpc.handle() still registers a private
-# channel through owner.webServer, but the 0.1.5 Web connection entry only
+# channel through owner.webServer, but the 0.1.7-rc.1 Web connection entry only
 # injects webRuntime. In a third-party plugin's ctx.inject(['connection'], ...)
 # scope that makes every private RPC registration fail with
 # "cannot get property webServer without inject"; the request then falls
