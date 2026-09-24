@@ -3,7 +3,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { LlmDiscoveredModel, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { CpaLocaleKey } from './locales.ts'
 import type { CpaClient } from './cpa-client.ts'
 // @ts-expect-error Runtime JS module is exported without a sibling declaration file.
@@ -118,7 +118,7 @@ export class CpaModelSettingsController {
 
   constructor(
     private readonly ctx: ClientContext,
-    private readonly settings: SettingsScope<unknown>,
+    private readonly settings: ConfigForm<unknown>,
     private readonly cpa: CpaClient,
   ) {
     this.store = createSnapshotStore(this.projection())

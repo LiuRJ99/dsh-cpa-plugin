@@ -45,6 +45,9 @@ function createHarness() {
   let nativeKey = 'SYNTHETIC_NATIVE_CPA_MARKER'
 
   const settingsService = {
+    describe() {
+      return [{ ns: 'llm-pi-ai', value: modelSettings }]
+    },
     get(ns) {
       if (String(ns) === 'llm-pi-ai') return modelSettings
       return registeredSections.get(String(ns))

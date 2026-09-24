@@ -195,7 +195,7 @@ export class CpaSettingsCardController {
   }
 }
 
-type CardProps = PropsRuntime<'settings.plugin.item'> & PropsLocale<'dsh-cpa'> & InjectFace<CpaSettingsCardFace>
+type CardProps = PropsRuntime<'settings.plugins.tab'> & PropsLocale<'dsh-cpa'> & InjectFace<CpaSettingsCardFace>
 
 export function CpaSettingsCard(props: CardProps) {
   const state = props.useCpaSettings(snapshot => snapshot)

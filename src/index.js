@@ -17,7 +17,7 @@ const PI_NS = 'llm-pi-ai'
 const API_KEY_REF = credentialRef('DSH_CLIPROXY_API_KEY')
 const PROVIDER = 'CLIProxyAPI'
 const MODEL_REFRESH_EVENT = 'dsh-cpa/refresh-models'
-const REFRESH_SETTINGS_NS = 'dsh-cpa-plugin'
+const REFRESH_SETTINGS_NS = 'llm-cliproxyapi'
 const REFRESH_INTERVALS = new Set([0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000])
 
 export const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
@@ -34,7 +34,7 @@ export const Config = z.object({
   fetchTimeoutMs: z.number().step(1).min(1).default(15000),
   retryInitialMs: z.number().step(1).min(1).default(3000),
   retryMaxMs: z.number().step(1).min(1).default(60000),
-  refreshIntervalMs: z.number().step(1).min(0).default(300000),
+  refreshIntervalMs: z.number().step(1).min(0).default(300000).volatile(),
 })
 
 function normalizedBaseURL(value) {
@@ -245,7 +245,7 @@ async function profileOf(profile, models, hasApiKey, config) {
   if (validated.issues?.length) {
     throw new Error(`llm-pi-ai rejected the generated provider profile: ${validated.issues[0].message}`)
   }
-  return validated.value.providers[PROVIDER]
+  return validated.value.providers.get()[PROVIDER]
 }
 
 function mergeModelCapacities(previous, discovered) {
@@ -273,8 +273,12 @@ function retryDelay(config, failures) {
 }
 
 function refreshIntervalOf(ctx, config) {
-  const value = ctx.settings.get(REFRESH_SETTINGS_NS)?.refreshIntervalMs
-  return Number.isInteger(value) && REFRESH_INTERVALS.has(value) ? value : config.refreshIntervalMs
+  const value = settingsEntryValue(ctx, REFRESH_SETTINGS_NS)?.refreshIntervalMs
+  return Number.isInteger(value) && REFRESH_INTERVALS.has(value) ? value : config.refreshIntervalMs.get()
+}
+
+function settingsEntryValue(ctx, entryId) {
+  return ctx.settings.describe().find(entry => entry.ns === entryId)?.value
 }
 
 export function apply(ctx, config) {
@@ -292,7 +296,7 @@ export function apply(ctx, config) {
       providerId: 'cpa',
       managementKeyEnv: 'CPA_MANAGEMENT_KEY',
       timeoutMs: config.fetchTimeoutMs,
-      refreshIntervalMs: config.refreshIntervalMs,
+      refreshIntervalMs: config.refreshIntervalMs.get(),
       registerDiscovery: false,
     })
     : undefined
@@ -343,7 +347,7 @@ export function apply(ctx, config) {
     // of this discovery call. Preserve capacities already stored for the same
     // provider endpoint so clicking "fetch available models" cannot erase a
     // user's manual context-window or max-output correction.
-    const currentProfile = ctx.settings.get(PI_NS)?.providers?.[PROVIDER]
+    const currentProfile = settingsEntryValue(ctx, PI_NS)?.providers?.[PROVIDER]
     const previousModels = typeof currentProfile?.baseURL === 'string'
       && normalizedBaseURL(currentProfile.baseURL) === normalizedBaseURL(request.baseURL)
       ? currentProfile.models
@@ -356,7 +360,7 @@ export function apply(ctx, config) {
   let observedRefreshKey
 
   const synchronize = async (signal, authOnly = false) => {
-    const section = ctx.settings.get(PI_NS)
+    const section = settingsEntryValue(ctx, PI_NS)
     if (section === undefined) throw new Error('The built-in llm-pi-ai settings namespace is not ready')
     const profile = section.providers?.[PROVIDER]
     if (!profile) return false
@@ -483,14 +487,14 @@ export function apply(ctx, config) {
   ctx.on(MODEL_REFRESH_EVENT, () => schedule({ throwOnError: true }))
 
   const scheduleFromSettings = (force = false) => {
-    const profile = ctx.settings.get(PI_NS)?.providers?.[PROVIDER]
+    const profile = settingsEntryValue(ctx, PI_NS)?.providers?.[PROVIDER]
     const refreshKey = refreshKeyOf(profile, config)
     if (!force && refreshKey === observedRefreshKey) return
     observedRefreshKey = refreshKey
     schedule()
   }
 
-  ctx.on('settings/updated', (ns) => {
+  ctx.on('settings/document-updated', (ns) => {
     if (ns === PI_NS) scheduleFromSettings()
     else if (ns === REFRESH_SETTINGS_NS) schedule()
   })

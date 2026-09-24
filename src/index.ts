@@ -6,6 +6,7 @@
  * on the Host for every request.
  */
 import { Context } from '@deepseek-ai/cordis'
+import type { Volatile } from '@deepseek-ai/cosmokit'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
@@ -35,13 +36,8 @@ const MODEL_KEY_REF = 'CPA_MODEL_API_KEY'
 /** The native CLIProxyAPI provider's credential reference. */
 const NATIVE_MODEL_KEY_REF = 'DSH_CLIPROXY_API_KEY'
 const MODEL_REFRESH_EVENT = 'dsh-cpa/refresh-models'
-const REFRESH_SETTINGS_NS = 'dsh-cpa-plugin' as const
+const REFRESH_SETTINGS_NS = 'llm-cliproxyapi' as const
 const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000] as const
-
-type RefreshSettings = { refreshIntervalMs: number }
-const RefreshSettings: z<RefreshSettings> = z.object({
-  refreshIntervalMs: z.natural().min(0).default(300000),
-})
 
 export interface Config {
   /** CPA base URL, normally http://localhost:8317. */
@@ -53,7 +49,7 @@ export interface Config {
   /** Host-side request timeout. */
   timeoutMs: number
   /** Unified model/catalog and account quota refresh interval. */
-  refreshIntervalMs: number
+  refreshIntervalMs: Volatile<number>
   /**
    * Keep the add-on from taking ownership of the provider's model catalog.
    * The upstream provider remains the source of truth for model metadata.
@@ -61,12 +57,12 @@ export interface Config {
   registerDiscovery?: boolean
 }
 
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   endpoint: z.string().default('http://localhost:8317'),
   providerId: z.string().default('cpa'),
   managementKeyEnv: z.string().default('CPA_MANAGEMENT_KEY'),
   timeoutMs: z.natural().min(1000).default(8000),
-  refreshIntervalMs: z.natural().min(0).default(300000),
+  refreshIntervalMs: z.natural().min(0).default(300000).volatile(),
   registerDiscovery: z.boolean().default(true),
 })
 
@@ -97,14 +93,6 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
   let capabilitiesPromise: Promise<CpaModelCapabilitiesView> | undefined
   let capabilitiesPromiseKey = ''
   let capabilitiesEpoch = 0
-  const refreshEntry: RefreshSettings = { refreshIntervalMs: normalizeRefreshInterval(config.refreshIntervalMs) }
-
-  ctx.inject(['settings'], (scope) => {
-    scope.settings.installSection(ctx, REFRESH_SETTINGS_NS, RefreshSettings, refreshEntry, {
-      setSource: () => {},
-      onChange: () => {},
-    })
-  })
 
   type CpaStreamOptions = Parameters<typeof streamCpaFast>[0]
   type CpaStream = ReturnType<typeof streamCpaFast>
@@ -167,9 +155,6 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
     fastModelIds.clear()
   }
   ;(ctx.on as unknown as (event: string, listener: () => void) => unknown)(MODEL_REFRESH_EVENT, () => invalidateModelCapabilities())
-  ctx.on('settings/updated', (namespace) => {
-    if (namespace === MODEL_SETTINGS_NS) invalidateModelCapabilities()
-  })
   ctx.on('settings/document-updated', (namespace) => {
     if (namespace === MODEL_SETTINGS_NS) invalidateModelCapabilities()
   })
@@ -400,8 +385,7 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
  * as the bootstrap fallback before a model route exists.
  */
 function effectiveConfig(ctx: Context, config: Config): Config {
-  const settings = ctx.get('settings')
-  const value = settings?.get(MODEL_SETTINGS_NS)
+  const value = settingsEntryValue(ctx, MODEL_SETTINGS_NS)
   const providers = valueObject(valueObject(value)?.providers)
   const providerId = providerCandidates(config).find(candidate => valueObject(providers?.[candidate]) !== undefined) ?? config.providerId
   const profile = valueObject(providers?.[providerId])
@@ -442,12 +426,18 @@ async function refreshModelCatalog(ctx: Context, signal: AbortSignal): Promise<v
 }
 
 function effectiveRefreshInterval(ctx: Context, config: Config): number {
-  const settings = ctx.get('settings')
-  const section = valueObject(settings?.get(REFRESH_SETTINGS_NS))
+  const section = valueObject(settingsEntryValue(ctx, REFRESH_SETTINGS_NS))
   return normalizeRefreshInterval(section?.refreshIntervalMs ?? config.refreshIntervalMs)
 }
 
+function settingsEntryValue(ctx: Context, entryId: string): unknown {
+  return ctx.get('settings')?.describe().find(entry => entry.ns === entryId)?.value
+}
+
 function normalizeRefreshInterval(value: unknown): number {
+  if (value !== null && typeof value === 'object' && 'get' in value && typeof value.get === 'function') {
+    value = value.get()
+  }
   const parsed = optionalNumberValue(value)
   return parsed !== undefined && REFRESH_INTERVALS.includes(parsed as typeof REFRESH_INTERVALS[number])
     ? parsed
@@ -478,8 +468,7 @@ async function configView(
 
 /** Read the settings-owned CPA model route without exposing its key to the browser. */
 function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
-  const settings = ctx.get('settings')
-  const value = settings?.get(MODEL_SETTINGS_NS)
+  const value = settingsEntryValue(ctx, MODEL_SETTINGS_NS)
   const providers = valueObject(valueObject(value)?.providers)
   const profile = valueObject(valueObject(providers)?.[config.providerId])
   const api = stringValue(profile?.api) ?? 'openai-responses'
@@ -516,8 +505,7 @@ function cpaFastRoute(ctx: Context, config: Config): CpaFastRoute | undefined {
 
 /** Resolve the image route without requiring the text Responses protocol. */
 function cpaImageRoute(ctx: Context, config: Config): { baseURL: string; apiKeyEnv?: string } | undefined {
-  const settings = ctx.get('settings')
-  const value = settings?.get(MODEL_SETTINGS_NS)
+  const value = settingsEntryValue(ctx, MODEL_SETTINGS_NS)
   const providers = valueObject(valueObject(value)?.providers)
   const providerId = providerCandidates(config).find(candidate => valueObject(providers?.[candidate]) !== undefined) ?? config.providerId
   const profile = valueObject(providers?.[providerId])
@@ -691,8 +679,7 @@ function imageModelsOf(models: readonly CpaModelCapability[]): CpaImageModel[] {
 }
 
 function imageModelsFromProfile(ctx: Context, config: Config): CpaImageModel[] {
-  const settings = ctx.get('settings')
-  const value = settings?.get(MODEL_SETTINGS_NS)
+  const value = settingsEntryValue(ctx, MODEL_SETTINGS_NS)
   const providers = valueObject(valueObject(value)?.providers)
   const providerId = providerCandidates(config).find(candidate => valueObject(providers?.[candidate]) !== undefined) ?? config.providerId
   const profile = valueObject(providers?.[providerId])

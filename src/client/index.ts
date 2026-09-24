@@ -3,7 +3,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ConnectionHandle, SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -35,7 +35,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 export const inject = [
-  'connection', 'locale', 'modelDirectories', 'remote', 'remote.session', 'sessions', 'settingsScope', 'slots',
+  'connection', 'locale', 'modelDirectories', 'remote', 'remote.session', 'sessions', 'configForms', 'slots',
 ]
 
 /**
@@ -90,8 +90,8 @@ export function applyAdditive(ctx: ClientContext): CpaClient {
           directory: directory.store,
           load: () => { if (available) directory.load().catch(() => {}) },
           select: (selection: ModelSelection) => available
-            ? directory.select(selection).then(() => true, () => false)
-            : Promise.resolve(false),
+            ? directory.select(selection)
+            : Promise.resolve(undefined),
           cpa,
           sessionId,
           session: session as SessionFace | undefined,
@@ -120,8 +120,8 @@ export function apply(ctx: ClientContext): void {
   // standalone quota route is introduced. The card is keyed on the settings
   // namespace the Host add-on serves (`dsh-cpa-plugin`), matching the
   // configurable-plugins tab's keyed `settings.plugin.item` dispatch.
-  ctx.inject(['slots', 'settingsScope'], (scope) => {
-    const modelSettings = scope.settingsScope.bind({ namespace: 'llm-pi-ai' })
+  ctx.inject(['slots', 'configForms'], (scope) => {
+    const modelSettings: ConfigForm<unknown> = scope.configForms.get('llm-pi-ai')
     const model = new CpaModelSettingsController(ctx, modelSettings, cpa)
     const card = new CpaSettingsCardController(ctx, cpa, model)
 
@@ -135,9 +135,11 @@ export function apply(ctx: ClientContext): void {
       return stop
     }, 'dsh-cpa: model settings refresh')
 
-    scope.slots.inject('settings.plugin.item', () => scope.slots.register({
-      name: 'settings.plugin.item',
-      key: 'dsh-cpa-plugin',
+    scope.slots.inject('settings.plugins.tab', () => scope.slots.register({
+      name: 'settings.plugins.tab',
+      id: 'dsh-cpa-plugin',
+      order: 20,
+      label: 'CLIProxyAPI',
       locale: NS,
       inject: () => card.inject(),
     }, CpaSettingsCard))

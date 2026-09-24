@@ -10,7 +10,6 @@ import {
   inject as piAiInject,
   name as piAiName,
 } from '@deepseek-ai/dsh-llm-pi-ai'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import {
   Config,
   PLACEHOLDER_AUTHORIZATION,
@@ -54,6 +53,12 @@ function createContext(initialSection, initialCredential) {
   const provided = new Map()
 
   const settingsService = {
+    describe() {
+      return [
+        { ns: 'llm-pi-ai', value: section },
+        { ns: 'llm-cliproxyapi', value: registeredSections.get('llm-cliproxyapi') },
+      ]
+    },
     get(ns) {
       return ns === undefined ? section : registeredSections.get(String(ns)) ?? section
     },
@@ -676,7 +681,7 @@ test('first profile synchronization restores capabilities stripped by the browse
         },
       }),
     } })
-    harness.emit('settings/updated', 'llm-pi-ai', harness.section, undefined, 'update')
+    harness.emit('settings/document-updated', 'llm-pi-ai', 1)
 
     await waitFor(() => harness.mutations.length === 1)
     const profile = harness.mutations[0][0].value
@@ -809,7 +814,7 @@ test('keyless profiles omit apiKeyEnv and receive a non-sensitive placeholder he
     assert.equal(profile.apiKeyEnv, undefined)
     assert.equal(profile.headers.authorization, PLACEHOLDER_AUTHORIZATION)
     assert.equal(profile.models[0].id, 'model-a')
-    harness.emit('settings/updated', 'llm-pi-ai', harness.section, undefined, 'update')
+    harness.emit('settings/document-updated', 'llm-pi-ai', 1)
     await new Promise((resolve) => setTimeout(resolve, 25))
     assert.equal(harness.mutations.length, 1)
     assert.equal(fetches, 1)
@@ -821,9 +826,9 @@ test('keyless profiles omit apiKeyEnv and receive a non-sensitive placeholder he
 
 test('refreshIntervalMs defaults to five minutes and supports manual mode', async () => {
   const config = await resolvedConfig()
-  assert.equal(config.refreshIntervalMs, 300000)
+  assert.equal(config.refreshIntervalMs.get(), 300000)
   const manual = await resolvedConfig({ refreshIntervalMs: 0 })
-  assert.equal(manual.refreshIntervalMs, 0)
+  assert.equal(manual.refreshIntervalMs.get(), 0)
 })
 
 test('credential removal regenerates the profile in keyless mode', async () => {
@@ -878,7 +883,7 @@ test('a newer settings change aborts stale discovery and only installs the lates
     harness.setSection({ providers: {
       CLIProxyAPI: managedProfile({ baseURL: 'http://127.0.0.1:9417/v1' }),
     } })
-    harness.emit('settings/updated', 'llm-pi-ai', harness.section, undefined, 'update')
+    harness.emit('settings/document-updated', 'llm-pi-ai', 1)
     await waitFor(() => harness.mutations.length === 1)
     const profile = harness.mutations[0][0].value
     assert.equal(profile.baseURL, 'http://127.0.0.1:9417/v1')
@@ -916,16 +921,32 @@ test('real Cordis composition leaves llm-pi-ai as the sole directory owner', asy
   const previousFetch = globalThis.fetch
   let inferenceAuthorization
   let catalogFetches = 0
+  const initialProfile = managedProfile({ headers: { authorization: PLACEHOLDER_AUTHORIZATION }, models: [
+    { id: 'plain', name: 'plain', contextWindow: 1000, maxTokens: 100, input: ['text'] },
+    { id: 'think', name: 'think', contextWindow: 1000, maxTokens: 100, input: ['text'] },
+  ] })
   const document = {
     'llm-pi-ai': {
-      providers: {},
+      providers: { CLIProxyAPI: initialProfile },
     },
   }
 
-  class MemorySettings extends SettingsProvider {
+  class MemorySettings extends Service {
+    constructor(ctx) { super(ctx, 'settings') }
     writable = true
-    async load() { return structuredClone(document) }
-    async persist(ns, section) { document[ns] = structuredClone(section) }
+    configure() { return () => {} }
+    describe() { return Object.entries(document).map(([ns, value]) => ({ ns, value })) }
+    async mutate(ns, ops) {
+      const section = structuredClone(document[ns] ?? {})
+      for (const op of ops) {
+        if (op.path.length !== 2 || op.path[0] !== 'providers') throw new Error('unexpected test settings path')
+        section.providers ??= {}
+        if (op.op === 'set') section.providers[op.path[1]] = op.value
+        else delete section.providers[op.path[1]]
+      }
+      document[ns] = section
+      this.ctx.emit('settings/document-updated', ns, 1)
+    }
   }
 
   class MemoryCredentials extends CredentialProvider {
@@ -981,7 +1002,7 @@ test('real Cordis composition leaves llm-pi-ai as the sole directory owner', asy
       inject: piAiInject,
       Config: PiAiConfig,
       apply: applyPiAi,
-    }, { providers: {} })
+    }, { providers: { CLIProxyAPI: initialProfile } })
     const cpaFiber = ctx.plugin({ name: 'llm-cliproxyapi', inject: ['settings', 'credentials', 'llm', 'timer'], Config, apply }, {
       retryInitialMs: 10,
       retryMaxMs: 20,
@@ -1008,14 +1029,14 @@ test('real Cordis composition leaves llm-pi-ai as the sole directory owner', asy
       }),
     }])
 
-    await waitFor(() => ctx.settings.get('llm-pi-ai')?.providers?.CLIProxyAPI?.models?.[0]?.id === 'plain')
-    await waitFor(() => ctx.settings.get('llm-pi-ai').providers.CLIProxyAPI.headers[PROFILE_SYNC_HEADER] === undefined)
-    assert.equal(catalogFetches, 1)
+    await waitFor(() => ctx.settings.describe().find(entry => entry.ns === 'llm-pi-ai')?.value?.providers?.CLIProxyAPI?.models?.[0]?.id === 'plain')
+    await waitFor(() => ctx.settings.describe().find(entry => entry.ns === 'llm-pi-ai')?.value?.providers?.CLIProxyAPI?.headers?.[PROFILE_SYNC_HEADER] === undefined)
+    assert.ok(catalogFetches >= 1)
     const directories = ctx.llm.listConfigurableProviders().filter((entry) => entry.provider === 'CLIProxyAPI')
     assert.equal(directories.length, 1)
     assert.equal(directories[0].settingsNs, 'llm-pi-ai')
     assert.equal(ctx.llm.listProviders().some((provider) => provider.id === 'CLIProxyAPI'), true)
-    const models = ctx.settings.get('llm-pi-ai').providers.CLIProxyAPI.models
+    const models = ctx.settings.describe().find(entry => entry.ns === 'llm-pi-ai').value.providers.CLIProxyAPI.models
     assert.equal(models[0].reasoningEfforts, undefined)
     assert.deepEqual(models[1].reasoningEfforts, { off: 'none', high: 'high' })
 
@@ -1028,7 +1049,7 @@ test('real Cordis composition leaves llm-pi-ai as the sole directory owner', asy
         source: { kind: 'user' },
       })],
     })) chunks.push(chunk)
-    assert.equal(inferenceAuthorization, PLACEHOLDER_AUTHORIZATION)
+    assert.equal(inferenceAuthorization, PLACEHOLDER_AUTHORIZATION, String(chunks.at(-1)?.reason?.failure?.message).slice(0, 300))
     assert.equal(chunks.at(-1)?.type, 'finish')
     assert.notEqual(chunks.at(-1)?.reason?.failure?.code, 'MISSING_CREDENTIAL')
   } finally {

@@ -5,9 +5,9 @@ import {
 import type { ModelProviderGroup, ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ModelCatalogModel } from '@deepseek-ai/dsh-api-session-controller/types'
 import {
-  IconCheckOutline16,
-  IconChevronDownOutline14,
-  IconChevronRightOutline14,
+  IconCheckOutlineRegular,
+  IconChevronDownOutlineRegular,
+  IconChevronRightOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from '@deepseek-ai/dsh-client-ui-model-selection/client'
@@ -176,7 +176,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
         : 'standard'
       directoryActionRef.current = 'select'
       const accepted = await select(nextSelection)
-      if (!accepted) return
+      if (accepted?.ok !== true) return
       if (nextSelection.provider === cpaState.providerId) {
         await ensureDefaultAccountForModel(cpa, sessionId, nextSelection.model)
         if (hasFastSpeedCapability(nextSelection.model, cpa.store.getSnapshot().modelCapabilities)) {
@@ -226,7 +226,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
         <span className="dsh-cpa-model-trigger-label">{modelLabel}</span>
         {effortLabel !== undefined ? <span className="dsh-cpa-model-trigger-effort">{effortLabel}</span> : null}
         {speedLabel !== undefined ? <span className="dsh-cpa-model-trigger-speed">{speedLabel}</span> : null}
-        <IconChevronDownOutline14 className={`dsh-cpa-chevron${open ? ' is-open' : ''}`} />
+        <IconChevronDownOutlineRegular className={`dsh-cpa-chevron${open ? ' is-open' : ''}`} />
       </button>
 
       {open ? (
@@ -272,7 +272,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
                           <span className="dsh-cpa-model-name">{model.name}</span>
                           {model.description !== undefined ? <span className="dsh-cpa-description">{model.description}</span> : null}
                         </span>
-                        <span className="dsh-cpa-check" aria-hidden="true">{selected ? <IconCheckOutline16 /> : null}</span>
+                        <span className="dsh-cpa-check" aria-hidden="true">{selected ? <IconCheckOutlineRegular /> : null}</span>
                       </button>
                     )
                   })}
@@ -315,7 +315,7 @@ export function CpaModelSelect({ locked, available, directory, load, select, cpa
 function MenuRow(props: { label: string; value: string; onClick: () => void }) {
   return (
     <button type="button" className="dsh-cpa-menu-row" role="menuitem" onClick={props.onClick}>
-      <span className="dsh-cpa-menu-label">{props.label}</span><span className="dsh-cpa-menu-value">{props.value}</span><IconChevronRightOutline14 className="dsh-cpa-menu-chevron" />
+      <span className="dsh-cpa-menu-label">{props.label}</span><span className="dsh-cpa-menu-value">{props.value}</span><IconChevronRightOutlineRegular className="dsh-cpa-menu-chevron" />
     </button>
   )
 }
@@ -330,7 +330,7 @@ function onKeyDown(setPane: (pane: Pane) => void, pane: Pane, close: () => void)
 }
 
 function snapshotHasImages(snapshot: ReturnType<SessionFace['getSnapshot']>): boolean {
-  return snapshot.queue.some(item => hasImageContent(item.content))
+  return snapshot.pendingSubmissions.some(item => item.attachments.some(attachment => attachment.type === 'image'))
 }
 
 function hasImageContent(value: unknown): boolean {

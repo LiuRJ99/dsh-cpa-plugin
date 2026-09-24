@@ -23,7 +23,7 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
       assert.equal(id, 'react')
       return {}
     })
-    assert.deepEqual(plugin.inject, ['connection', 'remote', 'remote.session', 'slots', 'locale', 'settingsScope'])
+    assert.deepEqual(plugin.inject, ['connection', 'remote', 'remote.session', 'slots', 'locale', 'configForms'])
 
     const registrations = []
     const injections = []
@@ -56,9 +56,9 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
         return () => {}
       },
     }
-    const settingsScope = {
-      bind(spec) {
-        assert.deepEqual(spec, { namespace: 'llm-pi-ai' })
+    const configForms = {
+      get(entryId) {
+        assert.equal(entryId, 'llm-pi-ai')
         return scope
       },
     }
@@ -69,12 +69,12 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
         if (name === 'remote') return { $on() { return () => {} } }
         if (name === 'slots') return slots
         if (name === 'locale') return locale
-        if (name === 'settingsScope') return settingsScope
+        if (name === 'configForms') return configForms
         throw new Error(`unexpected service: ${name}`)
       },
       slots,
       locale,
-      settingsScope,
+      configForms,
       effect(factory) {
         effect = factory
         return () => {}
@@ -82,9 +82,9 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
     }
     plugin.apply(ctx)
     assert.equal(typeof effect, 'function')
-    assert.deepEqual(injections, ['settings.section'])
+    assert.deepEqual(injections, ['settings.plugins.tab'])
     assert.equal(registrations.length, 1)
-    assert.equal(registrations[0].options.name, 'settings.section')
+    assert.equal(registrations[0].options.name, 'settings.plugins.tab')
     assert.equal(registrations[0].options.id, 'cliproxyapi')
     assert.equal(registrations[0].options.order, 25)
     assert.equal(typeof registrations[0].options.inject, 'function')
@@ -106,8 +106,8 @@ test('client owns only its Settings slot and keeps the configuration accessible'
   assert.doesNotMatch(source, /MutationObserver/)
   assert.doesNotMatch(source, /querySelector(All)?\s*\(/)
   assert.doesNotMatch(source, /modelsHeading|configuredRows|BOOTSTRAP_ATTRIBUTE|HIDDEN_ATTRIBUTE/)
-  assert.match(source, /settings\.section/)
-  assert.match(source, /ctx\.settingsScope/)
+  assert.match(source, /settings\.plugins\.tab/)
+  assert.match(source, /ctx\.configForms/)
   assert.match(source, /slots\.inject\(SETTINGS_SLOT/)
   assert.match(source, /expectedRevision/)
   assert.match(source, /scope\.subscribe\(/)

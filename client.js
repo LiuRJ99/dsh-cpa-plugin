@@ -22,14 +22,14 @@ window.__ModuleLoader__.load({
     const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
     const PROFILE_SYNC_TIMEOUT_MS = 30000
     const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'
-    const SETTINGS_SLOT = 'settings.section'
+    const SETTINGS_SLOT = 'settings.plugins.tab'
     const SETTINGS_TAB_ID = 'cliproxyapi'
     const SETTINGS_LOCALE_NS = 'settings.cliProxyApi'
     const ADDITIVE_CLIENT_ID = '@LiuRJ99/dsh-cpa-plugin/legacy-client-addon'
     const QUOTA_CACHE_KEY = 'dsh-cliproxyapi:quota-cache:v1'
      const REFRESH_INTERVALS = [0, 5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 5 * 60 * 60 * 1000]
     const EMPTY_CPA_STATE = { accounts: [], status: 'idle', quotaFetchedAt: undefined, refreshIntervalMs: 300000 }
-        const inject = ['connection', 'remote', 'remote.session', 'slots', 'locale', 'settingsScope']
+        const inject = ['connection', 'remote', 'remote.session', 'slots', 'locale', 'configForms']
 
     const copy = {
       en: {
@@ -1139,9 +1139,8 @@ window.__ModuleLoader__.load({
       const api = ctx.get('connection').api
       const remote = ctx.get('remote')
       const locale = ctx.locale
-      const settingsScope = ctx.settingsScope
       const t = locale.bind(SETTINGS_LOCALE_NS)
-      const scope = settingsScope.bind({ namespace: PI_NS })
+      const scope = ctx.configForms.get(PI_NS)
 
       ctx.effect(
         () => locale.register(SETTINGS_LOCALE_NS, copy),

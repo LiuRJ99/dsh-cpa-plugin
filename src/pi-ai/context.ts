@@ -6,28 +6,26 @@
  * host bundle remains usable with the published runtime packages.
  */
 
-import { contentHasImage, LlmError, offloadRequestImagesWithPolicy, offloadedImageText, ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, RequestMessage } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 import { toPiAssistant } from './replay.ts'
 
-function flattenText(message: Message): string {
+function flattenText(message: RequestMessage): string {
   return message.content
     .filter(block => block.type === 'text')
     .map(block => block.text)
     .join('')
 }
 
-function toolResultText(blocks: readonly ContentBlock[]): string {
-  return blocks.map(block => block.type === 'text'
-    ? block.text
-    : block.type === 'tool-result' ? toolResultText(block.content) : '').join('')
-}
-
-function assertSupportedImageRoles(messages: readonly Message[]): void {
+function assertSupportedHistory(messages: readonly RequestMessage[]): void {
   for (const message of messages) {
-    if (message.role !== 'user' && contentHasImage(message.content)) {
+    if (message.role === 'developer') throw new LlmError('Developer messages are not supported yet', 'UNSUPPORTED_CONTENT')
+    if (message.content.some(block => block.type === 'tool-addition' || block.type === 'tool-removal')) {
+      throw new LlmError('Tool-change blocks are not supported yet', 'UNSUPPORTED_CONTENT')
+    }
+    if (message.role !== 'user' && message.role !== 'tool' && contentHasImage(message.content)) {
       throw new LlmError(
         `pi-ai cannot represent an image in an in-history ${message.role} message`,
         'UNSUPPORTED_CONTENT',
@@ -55,15 +53,6 @@ async function userContent(
         })
         break
       }
-      case 'tool-result': {
-        const nested = await userContent(block.content, attachments)
-        if (typeof nested === 'string') {
-          if (nested.length > 0) content.push({ type: 'text', text: nested })
-        } else {
-          content.push(...nested)
-        }
-        break
-      }
       default:
         break
     }
@@ -80,19 +69,21 @@ function toolsOf(options: GenerateOptions): PiTool[] | undefined {
   }))
 }
 
-function piContext(options: GenerateOptions, messages: PiMessage[]): PiContext {
+function piContext(options: GenerateOptions, messages: PiMessage[], systemPrompt?: string): PiContext {
   const tools = toolsOf(options)
   return {
-    ...options.system !== undefined ? { systemPrompt: options.system } : {},
+    ...systemPrompt !== undefined ? { systemPrompt } : {},
     messages,
     ...tools !== undefined && tools.length > 0 ? { tools } : {},
   }
 }
 
 function textOnlyContext(options: GenerateOptions, onReplayDegrade?: (reason: string) => void): PiContext {
+  assertSupportedHistory(options.messages)
+  const { messages: history, systemPrompt } = splitSystemPrompt(options)
   const toolNames = new Map<ToolCallId, string>()
   const messages: PiMessage[] = []
-  for (const message of options.messages) {
+  for (const message of history) {
     if (contentHasImage(message.content)) {
       throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT')
     }
@@ -106,21 +97,28 @@ function textOnlyContext(options: GenerateOptions, onReplayDegrade?: (reason: st
       messages.push(assistant)
       continue
     }
-    const text = flattenText(message)
-    const results = message.content.filter(block => block.type === 'tool-result')
-    if (text.length > 0 || results.length === 0) messages.push({ role: 'user', content: text, timestamp: 0 })
-    for (const result of results) {
+    if (message.role === 'tool') {
       messages.push({
         role: 'toolResult',
-        toolCallId: result.toolCallId,
-        toolName: toolNames.get(result.toolCallId) ?? 'unknown',
-        content: [{ type: 'text', text: toolResultText(result.content) || '(no output)' }],
-        isError: result.isError ?? false,
+        toolCallId: message.toolCallId,
+        toolName: toolNames.get(message.toolCallId) ?? 'unknown',
+        content: [{ type: 'text', text: flattenText(message) || '(no output)' }],
+        isError: message.isError ?? false,
         timestamp: 0,
       })
+      continue
     }
+    messages.push({ role: 'user', content: flattenText(message), timestamp: 0 })
   }
-  return piContext(options, messages)
+  return piContext(options, messages, systemPrompt)
+}
+
+function splitSystemPrompt(options: GenerateOptions): { messages: readonly RequestMessage[], systemPrompt?: string } {
+  if (options.system !== undefined) return { messages: options.messages, systemPrompt: options.system }
+  const [first, ...rest] = options.messages
+  if (first?.role !== 'system') return { messages: options.messages }
+  const prompt = flattenText(first)
+  return { messages: rest, ...prompt.length > 0 ? { systemPrompt: prompt } : {} }
 }
 
 export function toPiContext(
@@ -151,13 +149,17 @@ async function toPiContextWithImages(
   onReplayDegrade?: (reason: string) => void,
   maxRequestImageBytes?: number,
 ): Promise<PiContext> {
-  assertSupportedImageRoles(options.messages)
-  const requestMessages = offloadRequestImagesWithPolicy(options.messages, {
-    representation: 'base64',
-    byteQuantum: 1,
-    ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-    placeholder: (ref) => offloadedImageText(ref),
-  })
+  assertSupportedHistory(options.messages)
+  const { messages: history, systemPrompt } = splitSystemPrompt(options)
+  if (maxRequestImageBytes !== undefined) {
+    const offloadImages = requiredImageOffload(history, {
+      representation: 'base64', maxBytes: maxRequestImageBytes,
+    }, block => block.attachment.bytes)
+    if (offloadImages > 0) {
+      throw new LlmError(`pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound`, IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages })
+    }
+  }
+  const requestMessages = projectOffloadedImages(history, ref => offloadedImageText(ref))
   const toolNames = new Map<ToolCallId, string>()
   const messages: PiMessage[] = []
 
@@ -174,26 +176,22 @@ async function toPiContextWithImages(
       messages.push(assistant)
       continue
     }
-    const regular = message.content.filter(block => block.type !== 'tool-result')
-    const content = await userContent(regular, attachments)
-    const results = message.content.filter((block): block is Extract<ContentBlock, { type: 'tool-result' }> => (
-      block.type === 'tool-result'
-    ))
-    if (content.length > 0 || results.length === 0) messages.push({ role: 'user', content, timestamp: 0 })
-    for (const result of results) {
-      const resultContent = await userContent(result.content, attachments)
+    const content = await userContent(message.content, attachments)
+    if (message.role === 'tool') {
       messages.push({
         role: 'toolResult',
-        toolCallId: result.toolCallId,
-        toolName: toolNames.get(result.toolCallId) ?? 'unknown',
-        content: typeof resultContent === 'string'
-          ? [{ type: 'text', text: resultContent || '(no output)' }]
-          : resultContent,
-        isError: result.isError ?? false,
+        toolCallId: message.toolCallId,
+        toolName: toolNames.get(message.toolCallId) ?? 'unknown',
+        content: typeof content === 'string'
+          ? [{ type: 'text', text: content || '(no output)' }]
+          : content,
+        isError: message.isError ?? false,
         timestamp: 0,
       })
+      continue
     }
+    messages.push({ role: 'user', content, timestamp: 0 })
   }
 
-  return piContext(options, messages)
+  return piContext(options, messages, systemPrompt)
 }
