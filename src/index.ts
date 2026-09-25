@@ -301,21 +301,26 @@ export function apply(ctx: Context, config: Config): CpaAddonHandle {
             value: intervalMs,
           }])
           invalidateModelCapabilities()
-           await refreshModelCatalog(ctx, signal)
+          const modelRefreshError = await refreshModelCatalogWarning(ctx, signal)
           const current = await readAccounts(signal)
           const accounts = current.quotaFetchedAt === undefined ? await refreshAccounts(signal) : current
-          return ok({ ...accounts, refreshIntervalMs: effectiveRefreshInterval(ctx, config) })
+          return ok({
+            ...accounts,
+            refreshIntervalMs: effectiveRefreshInterval(ctx, config),
+            ...(modelRefreshError === undefined ? {} : { modelRefreshError }),
+          })
         }
         case 'accounts':
           return ok(await readAccounts(signal))
         case 'refresh': {
           invalidateModelCapabilities()
-           await refreshModelCatalog(ctx, signal)
+          const modelRefreshError = await refreshModelCatalogWarning(ctx, signal)
           // A user-triggered refresh must invalidate the Host-side snapshot.
           // `readAccounts()` is intentionally cache-friendly for model-scoped
           // consumers, but returning it here made Settings and the composer
           // keep different quota snapshots after one of them was refreshed.
-          return ok(await refreshAccounts(signal))
+          const accounts = await refreshAccounts(signal)
+          return ok({ ...accounts, ...(modelRefreshError === undefined ? {} : { modelRefreshError }) })
         }
         case 'account-models': {
           const request = parseAccountModelsRequest(payload)
@@ -423,6 +428,20 @@ async function refreshModelCatalog(ctx: Context, signal: AbortSignal): Promise<v
   const parallel = (ctx as unknown as { parallel?: (event: string) => Promise<void> }).parallel
   if (typeof parallel === 'function') await parallel.call(ctx, MODEL_REFRESH_EVENT)
   if (signal.aborted) throw signal.reason
+}
+
+async function refreshModelCatalogWarning(ctx: Context, signal: AbortSignal): Promise<string | undefined> {
+  try {
+    await refreshModelCatalog(ctx, signal)
+    return undefined
+  } catch (error) {
+    if (signal.aborted) throw signal.reason ?? error
+    const message = error instanceof AggregateError && error.errors.length > 0
+      ? error.errors.map((item: unknown) => item instanceof Error ? item.message : String(item)).join('; ')
+      : error instanceof Error ? error.message : String(error)
+    ctx.logger.warn('CLIProxyAPI model catalog refresh failed: ' + message)
+    return message
+  }
 }
 
 function effectiveRefreshInterval(ctx: Context, config: Config): number {

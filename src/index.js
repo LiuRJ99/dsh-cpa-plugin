@@ -366,38 +366,43 @@ export function apply(ctx, config) {
     if (!profile) return false
     if (authOnly && profileSynchronizationPending(profile)) return true
     if (signal.aborted) throw signal.reason
-    const hasApiKey = async () => (await optionalApiKey(ctx)) !== undefined
-    let catalog
-    if (authOnly) {
-      catalog = { models: profile.models, hasApiKey: await hasApiKey() }
-    } else if (profileHasRichBootstrap(profile)) {
-      const discovered = takeDiscovery(profile.baseURL)
-      catalog = discovered
-        ? { models: discovered, hasApiKey: await hasApiKey() }
-        : await catalogFor(profile, signal)
-    } else {
-      catalog = await catalogFor(profile, signal)
-    }
-    if (signal.aborted) throw signal.reason
-    const next = await profileOf(profile, catalog.models, catalog.hasApiKey, config)
-    if (!deepEqualJson(next, profile)) {
-      observedRefreshKey = refreshKeyOf(next, config)
-      await ctx.settings.mutate(PI_NS, [{
-        op: 'set',
-        path: ['providers', PROVIDER],
-        value: next,
-      }])
-    }
-    if (!authOnly && cpaAddon !== undefined) {
-      try {
-        await cpaAddon.refreshAccounts(signal)
-      } catch (error) {
-        if (signal.aborted) throw signal.reason ?? error
-        const message = error instanceof Error ? error.message : String(error)
-        ctx.logger.warn('CLIProxyAPI account/quota refresh failed: ' + message)
+    try {
+      const hasApiKey = async () => (await optionalApiKey(ctx)) !== undefined
+      let catalog
+      if (authOnly) {
+        catalog = { models: profile.models, hasApiKey: await hasApiKey() }
+      } else if (profileHasRichBootstrap(profile)) {
+        const discovered = takeDiscovery(profile.baseURL)
+        catalog = discovered
+          ? { models: discovered, hasApiKey: await hasApiKey() }
+          : await catalogFor(profile, signal)
+      } else {
+        catalog = await catalogFor(profile, signal)
+      }
+      if (signal.aborted) throw signal.reason
+      const next = await profileOf(profile, catalog.models, catalog.hasApiKey, config)
+      if (!deepEqualJson(next, profile)) {
+        observedRefreshKey = refreshKeyOf(next, config)
+        await ctx.settings.mutate(PI_NS, [{
+          op: 'set',
+          path: ['providers', PROVIDER],
+          value: next,
+        }])
+      }
+      return true
+    } finally {
+      // Account quota has its own upstream source. A catalog failure must not
+      // prevent the automatic quota refresh or hide a previously good value.
+      if (!authOnly && cpaAddon !== undefined && !signal.aborted) {
+        try {
+          await cpaAddon.refreshAccounts(signal)
+        } catch (error) {
+          if (signal.aborted) throw signal.reason ?? error
+          const message = error instanceof Error ? error.message : String(error)
+          ctx.logger.warn('CLIProxyAPI account/quota refresh failed: ' + message)
+        }
       }
     }
-    return true
   }
 
   let stopped = false

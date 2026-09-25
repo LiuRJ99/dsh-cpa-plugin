@@ -154,7 +154,7 @@ export class CpaClient {
       state.fetchedAt = value.fetchedAt
       if (value.quotaFetchedAt !== undefined) state.quotaFetchedAt = value.quotaFetchedAt
       state.status = 'ready'
-      state.error = null
+      state.error = value.modelRefreshError ?? null
     })
     this.reconcileSelectedAccounts(accounts)
     if (value.quotaFetchedAt !== undefined) this.persistQuotaSnapshot(accounts, value.quotaFetchedAt)

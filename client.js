@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
     const PROFILE_SYNC_HEADER = 'x-dsh-provider-cpa-sync'
     const PROFILE_SYNC_TIMEOUT_MS = 30000
     const PLACEHOLDER_AUTHORIZATION = 'Bearer dsh-cliproxyapi-no-key'
-    const SETTINGS_SLOT = 'settings.plugins.tab'
+    const SETTINGS_SLOT = 'settings.section'
     const SETTINGS_TAB_ID = 'cliproxyapi'
     const SETTINGS_LOCALE_NS = 'settings.cliProxyApi'
     const ADDITIVE_CLIENT_ID = '@LiuRJ99/dsh-cpa-plugin/legacy-client-addon'
@@ -67,6 +67,7 @@ window.__ModuleLoader__.load({
         baseRequired: 'Base URL is required.',
         baseInvalid: 'Base URL must be a valid HTTP or HTTPS URL.',
         noModels: 'CLIProxyAPI returned no usable models.',
+        modelRefreshFailed: 'Model catalog refresh failed; account quota was updated:',
       },
       zh: {
         tab: 'CLIProxyAPI',
@@ -103,6 +104,7 @@ window.__ModuleLoader__.load({
         baseRequired: '请填写 Base URL。',
         baseInvalid: 'Base URL 必须是有效的 HTTP 或 HTTPS 地址。',
         noModels: 'CLIProxyAPI 未返回可用模型。',
+        modelRefreshFailed: '模型目录刷新失败，账号额度已更新：',
       },
     }
 
@@ -877,6 +879,10 @@ window.__ModuleLoader__.load({
         if (cpa !== undefined) {
           try {
             await cpa.refresh()
+            const warning = cpa.store.getSnapshot().error
+            setFeedback(warning
+              ? { text: `${t('modelRefreshFailed')} ${warning}`, error: true }
+              : { text: '', error: false })
           } catch (error) {
             setFeedback({
               text: error instanceof Error ? error.message : String(error),
@@ -892,7 +898,10 @@ window.__ModuleLoader__.load({
           setAccounts(nextAccounts)
           const fetchedAt = value?.quotaFetchedAt || value?.fetchedAt
            setCacheFetchedAt(fetchedAt)
-           writeQuotaCache(baseURLOverride, nextAccounts, fetchedAt)
+          writeQuotaCache(baseURLOverride, nextAccounts, fetchedAt)
+          setFeedback(value?.modelRefreshError
+            ? { text: `${t('modelRefreshFailed')} ${value.modelRefreshError}`, error: true }
+            : { text: '', error: false })
         } catch (error) {
           setFeedback({
             text: error instanceof Error ? error.message : String(error),

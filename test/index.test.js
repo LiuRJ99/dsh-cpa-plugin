@@ -51,6 +51,7 @@ function createContext(initialSection, initialCredential) {
   const effects = []
   const timeouts = []
   const provided = new Map()
+  const rpcHandlers = new Map()
 
   const settingsService = {
     describe() {
@@ -98,8 +99,9 @@ function createContext(initialSection, initialCredential) {
 
   const connectionService = {
     rpc: {
-      handle() {
-        return () => {}
+      handle(channel, handler) {
+        rpcHandlers.set(channel, handler)
+        return () => rpcHandlers.delete(channel)
       },
     },
   }
@@ -169,6 +171,11 @@ function createContext(initialSection, initialCredential) {
     warnings,
     timeouts,
     get provided() { return provided },
+    invokeRpc(endpoint, payload = {}) {
+      const handler = rpcHandlers.get('/cpa')
+      assert.ok(handler, 'CPA RPC handler registered')
+      return handler(endpoint, payload, new AbortController().signal)
+    },
     get section() { return section },
     setSection(value) { section = value },
     setCredential(value) { credential = value },
@@ -348,6 +355,63 @@ test('refreshes Kimi Code quota through the account-scoped CPA api-call in both 
     assert.equal(view.accounts[0].quota?.windows?.[0].window, 'weekly')
     assert.equal(view.accounts[0].quota?.windows?.[0].remaining, 60)
     assert.equal(view.accounts[1].quota?.windows?.[0].remaining, 60)
+  } finally {
+    harness.dispose()
+    globalThis.fetch = previousFetch
+  }
+})
+
+test('manual refresh returns Antigravity quota when the model catalog event fails', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/v0/management/auth-files')) {
+      return new Response(JSON.stringify({ files: [{
+        id: 'account', auth_index: 'auth', provider: 'antigravity', project_id: 'project', status: 'active',
+      }] }), { status: 200 })
+    }
+    const request = JSON.parse(init.body)
+    const body = request.url.includes('retrieveUserQuotaSummary')
+      ? { groups: [{ displayName: 'Claude and GPT models', buckets: [
+        { window: '5h', remainingFraction: 0.75 }, { window: 'weekly', remainingFraction: 0.5 },
+      ] }] }
+      : { currentTier: { id: 'pro' } }
+    return new Response(JSON.stringify({ status_code: 200, body: JSON.stringify(body) }), { status: 200 })
+  }
+  const harness = createContext({ providers: { CLIProxyAPI: managedProfile() } }, 'management-key')
+  harness.ctx.parallel = async () => { throw new AggregateError([new Error('catalog unavailable')]) }
+  try {
+    applyCpaAddon(harness.ctx, {
+      endpoint: 'http://127.0.0.1:8317', providerId: 'CLIProxyAPI', managementKeyEnv: 'CPA_MANAGEMENT_KEY',
+      timeoutMs: 8000, refreshIntervalMs: 300000, registerDiscovery: false,
+    })
+    const result = await harness.invokeRpc('refresh')
+    assert.equal(result.ok, true)
+    assert.equal(result.value.modelRefreshError, 'catalog unavailable')
+    assert.equal(result.value.accounts[0].plan, 'pro')
+    assert.deepEqual(result.value.accounts[0].quota.windows.map(window => window.remaining), [75, 50])
+    assert.match(harness.warnings[0], /catalog unavailable/)
+  } finally {
+    harness.dispose()
+    globalThis.fetch = previousFetch
+  }
+})
+
+test('automatic quota refresh continues when the model catalog endpoint fails', async () => {
+  const previousFetch = globalThis.fetch
+  let accountReads = 0
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/models?')) return new Response('{}', { status: 503 })
+    if (String(url).endsWith('/v0/management/auth-files')) {
+      accountReads += 1
+      return new Response(JSON.stringify({ files: [] }), { status: 200 })
+    }
+    throw new Error(`unexpected request: ${String(url)}`)
+  }
+  const harness = createContext({ providers: { CLIProxyAPI: managedProfile() } }, 'management-key')
+  try {
+    apply(harness.ctx, await resolvedConfig({ retryInitialMs: 100 }))
+    await waitFor(() => accountReads > 0)
+    assert.match(harness.warnings[0], /model catalog answered 503/)
   } finally {
     harness.dispose()
     globalThis.fetch = previousFetch
@@ -906,7 +970,7 @@ test('catalog requests honor timeout and failed refreshes use exponential backof
     apply(harness.ctx, await resolvedConfig({ fetchTimeoutMs: 10, retryInitialMs: 20, retryMaxMs: 80 }))
     await waitFor(() => harness.timeouts.length === 1)
     assert.equal(harness.timeouts[0].delay, 20)
-    assert.match(harness.warnings[0], /timed out after 10 ms/)
+    assert.ok(harness.warnings.some(message => /timed out after 10 ms/.test(message)))
 
     harness.timeouts[0].callback()
     await waitFor(() => harness.timeouts.length === 2)

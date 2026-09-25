@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.8] - 2026-09-25
+
+### Fixed
+
+- Restored settings save and synchronization on DSH 0.1.7 by using the current Remote settings, credentials, and LLM APIs.
+- Refreshed account quota even when model-catalog synchronization fails; the settings page now shows the separate model error while preserving the updated quota.
+- Returned CLIProxyAPI settings to the first-level Settings sidebar.
+
+## [0.4.7] - 2026-09-25
+
+### Changed
+
+- Updated the DSH peer and build dependencies for Host 0.1.7-rc.1.
+
 ## [0.4.6] - 2026-09-24
 
 ### Added

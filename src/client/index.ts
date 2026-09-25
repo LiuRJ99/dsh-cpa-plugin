@@ -116,10 +116,9 @@ export function apply(ctx: ClientContext): void {
   const cpa = applyAdditive(ctx)
   void cpa.loadConfig().catch(() => { /* settings card exposes the error */ })
 
-  // Settings → Plugins → Plugin configuration. No new main-panel button or
-  // standalone quota route is introduced. The card is keyed on the settings
-  // namespace the Host add-on serves (`dsh-cpa-plugin`), matching the
-  // configurable-plugins tab's keyed `settings.plugin.item` dispatch.
+  // Give CPA its own first-level Settings navigation entry. The composed
+  // client uses its native tab; this legacy standalone entry follows the
+  // same navigation placement when loaded on its own.
   ctx.inject(['slots', 'configForms'], (scope) => {
     const modelSettings: ConfigForm<unknown> = scope.configForms.get('llm-pi-ai')
     const model = new CpaModelSettingsController(ctx, modelSettings, cpa)
@@ -135,8 +134,8 @@ export function apply(ctx: ClientContext): void {
       return stop
     }, 'dsh-cpa: model settings refresh')
 
-    scope.slots.inject('settings.plugins.tab', () => scope.slots.register({
-      name: 'settings.plugins.tab',
+    scope.slots.inject('settings.section', () => scope.slots.register({
+      name: 'settings.section',
       id: 'dsh-cpa-plugin',
       order: 20,
       label: 'CLIProxyAPI',

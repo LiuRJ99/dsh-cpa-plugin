@@ -4,24 +4,24 @@
 
 为 DeepSeek Harness 添加一个基于 OpenAI Responses API 的 `CLIProxyAPI` 模型供应商。
 
-插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，跨机器安装必须使用经过验证的固定 Git commit 或 tarball。
+插件会自动从 CLIProxyAPI 获取模型列表，无需手动添加或维护模型。本项目不发布到 npm，跨机器安装使用经过验证的固定 Git Release tag 或 commit。
 
-## Fork 增强特性（v0.4.6）
+## Fork 增强特性（v0.4.8）
 
-> 本项目为 [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) 的维护与增强分支（维护仓库：[`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin)，当前版本 `v0.4.6`）。在保留上游 Provider 基础能力的前提下，重点补齐 GPT/Codex Responses 协议行为、账号额度可视化、速度模式、以及供下游插件消费的图像生成底座服务。
+> 本项目为 [`router-for-me/dsh-cliproxyapi-provider`](https://github.com/router-for-me/dsh-cliproxyapi-provider) 的维护与增强分支（维护仓库：[`LiuRJ99/dsh-cpa-plugin`](https://github.com/LiuRJ99/dsh-cpa-plugin)，当前版本 `v0.4.8`）。在保留上游 Provider 基础能力的前提下，重点补齐 GPT/Codex Responses 协议行为、账号额度可视化、速度模式、以及供下游插件消费的图像生成底座服务。
 
 ### 1. 本 Fork 安装方式
 
 ```bash
-# 推荐：安装经过完整验证的 v0.4.6 Release Tag
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.6"
+# 推荐：安装经过完整验证的 v0.4.8 Release Tag
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.8"
 ```
 
 不要使用裸包名或 `#main` 安装本 fork。
 
 ### 2. 与上游的差异
 
-| | 上游 | 本 fork `v0.4.6` |
+| | 上游 | 本 fork `v0.4.8` |
 |---|---|---|
 | 账号额度界面 | 无 | 多窗口额度解析 + 三色进度条 + 账号切换弹窗 |
 | Kimi Code 额度 | 无 | 国内与国际站按账号查询，兼容新旧额度结构 |
@@ -50,7 +50,7 @@ pnpm run typecheck && pnpm run bundle
 ### 从固定 Git Release Tag 安装（推荐）
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.6"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.8"
 ```
 
 也可以从固定 Git commit 安装：
@@ -72,7 +72,7 @@ dsh --profile web
 更新时将版本 tag 或 commit 替换为新的已验证目标，并重新执行 `dsh plugin add`：
 
 ```sh
-dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.6"
+dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.8"
 ```
 
 不要使用无差别的 `dsh plugin --profile web update`，因为它可能同时更新 profile 中的其他插件。
@@ -89,7 +89,7 @@ dsh plugin --profile web add "github:LiuRJ99/dsh-cpa-plugin#v0.4.6"
 
 打开 Harness 后：
 
-1. 进入 **设置 → 插件 → CLIProxyAPI**。
+1. 进入 **设置 → CLIProxyAPI**。
 2. 填写 CLIProxyAPI 的**模型 API 地址**，例如 `http://localhost:8317/v1`。
 3. 填写模型调用 **API Key**；无鉴权服务可以留空。
 4. 如需账号状态和额度，填写 CLIProxyAPI 的 **Management Key**，对应 `remote-management.secret-key`。

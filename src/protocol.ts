@@ -89,6 +89,8 @@ export interface CpaAccountsView {
   fetchedAt: string
   /** Time at which provider-specific quota data was last refreshed. */
   quotaFetchedAt?: string
+  /** Model catalog refresh can fail independently while account quota succeeds. */
+  modelRefreshError?: string
 }
 
 export interface CpaRefreshIntervalView extends CpaAccountsView {
