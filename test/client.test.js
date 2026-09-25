@@ -23,7 +23,7 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
       assert.equal(id, 'react')
       return {}
     })
-    assert.deepEqual(plugin.inject, ['connection', 'remote', 'remote.session', 'slots', 'locale', 'configForms'])
+    assert.deepEqual(plugin.inject, ['connection', 'remote', 'remote.session', 'remote.settings', 'remote.credentials', 'remote.llm', 'slots', 'locale', 'configForms'])
 
     const registrations = []
     const injections = []
@@ -65,7 +65,7 @@ test('client bundle registers a lifecycle-owned Settings section', async () => {
     let effect
     const ctx = {
       get(name) {
-        if (name === 'connection') return { api: {} }
+        if (name === 'connection') return { rpc: {} }
         if (name === 'remote') return { $on() { return () => {} } }
         if (name === 'slots') return slots
         if (name === 'locale') return locale
@@ -109,7 +109,8 @@ test('client owns only its Settings slot and keeps the configuration accessible'
   assert.match(source, /settings\.plugins\.tab/)
   assert.match(source, /ctx\.configForms/)
   assert.match(source, /slots\.inject\(SETTINGS_SLOT/)
-  assert.match(source, /expectedRevision/)
+  assert.match(source, /remote\.settings\.mutate\(/)
+  assert.doesNotMatch(source, /connection\)\.api/)
   assert.match(source, /scope\.subscribe\(/)
   assert.doesNotMatch(source, /remote\.\$on\('settings\/document-updated'/)
   assert.match(source, /remote\.\$on\('credentials\/reference-updated'/)
@@ -406,14 +407,16 @@ test('initial profile waits until the host writes complete model capabilities', 
     }
     let bootstrap
     let discoveryRequest
-    const ok = (value) => ({ result: { ok: true, value } })
-    const api = {
+    const ok = (value) => ({ ok: true, value })
+    const remote = {
       settings: {
         async describe() {
           return ok({ writable: true, hasDocument: true, namespaces: [currentNamespace] })
         },
-        async mutate(request) {
-          bootstrap = request.ops[0].value
+        async mutate(namespace, ops, revision) {
+          assert.equal(namespace, 'llm-pi-ai')
+          assert.equal(revision, 1)
+          bootstrap = ops[0].value
           currentNamespace = {
             ns: 'llm-pi-ai', revision: 2, value: { providers: { CLIProxyAPI: bootstrap } },
           }
@@ -421,16 +424,17 @@ test('initial profile waits until the host writes complete model capabilities', 
         },
       },
       credentials: {
-        async describe() {
-          return ok({ credentials: { DSH_CLIPROXY_API_KEY: { configured: false } } })
+        async describe(refs) {
+          assert.deepEqual(refs, ['DSH_CLIPROXY_API_KEY'])
+          return ok({ DSH_CLIPROXY_API_KEY: { configured: false } })
         },
       },
       llm: {
-        async discoverModels(request) {
-          discoveryRequest = request
-          return ok({ models: [{
+        async discoverModels(settingsNs, request) {
+          discoveryRequest = { settingsNs, ...request }
+          return ok([{
             id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol', contextWindow: 372000, maxTokens: 32768,
-          }] })
+          }])
         },
       },
     }
@@ -449,7 +453,7 @@ test('initial profile waits until the host writes complete model capabilities', 
     }
     let settled = false
     const installing = plugin.installInitialProfile(
-      api, scope, 'http://127.0.0.1:8317/v1', '', messages,
+      remote, scope, 'http://127.0.0.1:8317/v1', '', messages,
     ).then((profile) => {
       settled = true
       return profile
@@ -496,6 +500,53 @@ test('initial profile waits until the host writes complete model capabilities', 
     assert.deepEqual(profile.models[0].input, ['text', 'image'])
     assert.deepEqual(profile.models[0].reasoningEfforts, { low: 'low', high: 'high' })
     assert.equal(scopeListeners.length, 0)
+  } finally {
+    delete globalThis.window
+  }
+})
+
+test('save recreates a deleted CPA provider through current Remote namespaces', async () => {
+  let definition
+  globalThis.window = { __ModuleLoader__: { load(value) { definition = value } } }
+  try {
+    await import('../client.js?deleted-profile-test')
+    const plugin = definition.factory(() => ({}))
+    let snapshot = { status: 'ready', revision: 4, writable: true, value: { providers: {} } }
+    const listeners = new Set()
+    const scope = {
+      getSnapshot: () => snapshot,
+      subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+    }
+    const calls = []
+    const remote = {
+      settings: {
+        describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'llm-pi-ai', revision: 4, value: { providers: {} } }] } }),
+        mutate: async (ns, ops, revision) => {
+          calls.push(['mutate', ns, revision])
+          const profile = ops[0].value
+          queueMicrotask(() => {
+            snapshot = { ...snapshot, revision: 6, value: { providers: { CLIProxyAPI: { ...profile, headers: {} } } } }
+            for (const listener of listeners) listener()
+          })
+          return { ok: true, value: { ns, revision: 5, value: { providers: { CLIProxyAPI: profile } } } }
+        },
+      },
+      credentials: { describe: async (refs) => {
+        calls.push(['credentials', refs])
+        return { ok: true, value: { DSH_CLIPROXY_API_KEY: { configured: true } } }
+      } },
+      llm: { discoverModels: async (ns, request) => {
+        calls.push(['discover', ns, request.provider])
+        return { ok: true, value: [{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }] }
+      } },
+    }
+    const profile = await plugin.installInitialProfile(remote, scope, 'http://127.0.0.1:8317/v1', '', { noModels: 'no models', syncTimeout: 'sync timeout' })
+    assert.equal(profile.models[0].id, 'gpt-5.6-sol')
+    assert.equal(profile.apiKeyEnv, 'DSH_CLIPROXY_API_KEY')
+    assert.deepEqual(calls[0], ['credentials', ['DSH_CLIPROXY_API_KEY']])
+    assert.deepEqual(calls[1], ['discover', 'llm-cliproxyapi', 'CLIProxyAPI'])
+    assert.deepEqual(calls[2], ['mutate', 'llm-pi-ai', 4])
+    assert.equal(listeners.size, 0)
   } finally {
     delete globalThis.window
   }
