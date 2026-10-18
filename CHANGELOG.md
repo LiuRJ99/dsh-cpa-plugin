@@ -1,3 +1,7 @@
+## 0.4.10 — 2026-10-18
+
+Keep private RPC Web Server injection while preserving the Host webStartup authority dependency. Remove the retired webRuntime requirement that prevents 0.2.1-rc.1 Desktop from activating Connection.
+
 ## 0.4.9 — 2026-10-18
 
 Move official DSH service packages from runtime dependencies to Host peers, align the build SDK with 0.2.1-rc.1, and retain CPA settings, quota, image generation and Codex routing integration.
