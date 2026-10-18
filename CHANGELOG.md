@@ -1,3 +1,9 @@
+## 0.4.9 — 2026-10-18
+
+Move official DSH service packages from runtime dependencies to Host peers, align the build SDK with 0.2.1-rc.1, and retain CPA settings, quota, image generation and Codex routing integration.
+
+Compatibility is restricted to `0.2.0-rc.2 || 0.2.1-rc.1`; no alpha or later Host is implied.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
