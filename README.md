@@ -159,3 +159,7 @@ pnpm run bundle
 pnpm run verify:package
 pnpm run pack:github
 ```
+
+## Host 兼容策略
+
+Host 最低要求为 `>=0.2.0-rc.2`。较新的 DSH 版本默认延续兼容，只有确认存在不兼容时才增加排除范围或调整实现；不按每个 RC 维护白名单。固定的构建 SDK 版本只记录构建输入，不限制 Host 到同一个版本。安装来源仍固定 release/tag；实际验证记录与兼容范围分开，范围覆盖不等于每个未来版本都已经实测。
