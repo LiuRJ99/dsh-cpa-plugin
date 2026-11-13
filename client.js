@@ -58,6 +58,7 @@ window.__ModuleLoader__.load({
          refresh5h: '5 hours',
          refreshHint: 'Host automatically synchronizes models and account quota at the selected interval.',
         quotaUnavailable: '—',
+        quotaRemaining: 'Remaining',
         resetAt: 'Reset',
         cancel: 'Cancel',
         save: 'Save',
@@ -95,6 +96,7 @@ window.__ModuleLoader__.load({
          refresh5h: '5 小时',
          refreshHint: '由 Host 按所选间隔自动同步模型和账号额度。',
         quotaUnavailable: '—',
+        quotaRemaining: '剩余',
         resetAt: '重置',
         cancel: '取消',
         save: '保存',
@@ -635,7 +637,8 @@ window.__ModuleLoader__.load({
       const formatted = `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
       const remainingMs = date.getTime() - Date.now()
       if (remainingMs <= 0) return `${formatted} · 已到期`
-      const days = Math.floor(remainingMs / 86400000)
+      // A weekly window six days and 23 hours away is "7 days", not "6".
+      const days = Math.round(remainingMs / 86400000)
       if (days > 0) return `${formatted} · ${days}天后`
       const hours = Math.floor(remainingMs / 3600000)
       if (hours > 0) return `${formatted} · ${hours}小时后`
@@ -750,7 +753,7 @@ window.__ModuleLoader__.load({
                     const percent = quotaPercent(window)
                     const label = percent === undefined
                       ? String(window?.label || t('quotaUnavailable'))
-                      : `${Math.round(percent)}%`
+                      : `${t('quotaRemaining')} ${Math.round(percent)}%`
                     const reset = window?.resetAt ? resetMeta(window.resetAt) : ''
                     const group = String(window?.group || '').trim()
                     const previousGroup = String(windows[index - 1]?.group || '').trim()

@@ -1,3 +1,7 @@
+## 0.4.12 — 2026-11-13
+
+Show every Antigravity quota pool: the account card merges the per-model `retrieveUserQuota` buckets with the summary endpoint's windows, so a pool the summary leaves out (Gemini models on Pro accounts) is no longer hidden behind a misleading 100%. Windows list the five-hour limit before the weekly one, the remaining value is labelled, and a weekly reset six days and 23 hours away reads "7 days" instead of "6".
+
 ## 0.4.10 — 2026-10-18
 
 Keep private RPC Web Server injection while preserving the Host webStartup authority dependency. Remove the retired webRuntime requirement that prevents 0.2.1-rc.1 Desktop from activating Connection.

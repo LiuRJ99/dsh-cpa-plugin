@@ -395,6 +395,55 @@ test('manual refresh returns Antigravity quota when the model catalog event fail
   }
 })
 
+test('merges per-model Antigravity quota so pools the summary omits still show', async () => {
+  const previousFetch = globalThis.fetch
+  const fiveHoursAhead = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/v0/management/auth-files')) {
+      return new Response(JSON.stringify({ files: [{
+        id: 'account', auth_index: 'auth', provider: 'antigravity', project_id: 'project', status: 'active',
+      }] }), { status: 200 })
+    }
+    const request = JSON.parse(init.body)
+    let body
+    if (request.url.includes('retrieveUserQuotaSummary')) {
+      // A Pro account gets the Claude/GPT pool only, and weekly arrives first.
+      body = { groups: [{ displayName: 'Claude and GPT models', buckets: [
+        { window: 'weekly', remainingFraction: 0.5 },
+        { window: '5h', remainingFraction: 0.75 },
+      ] }] }
+    } else if (request.url.includes('retrieveUserQuota')) {
+      body = { buckets: [
+        { modelId: 'claude-opus-5-5-high', remainingFraction: 1, resetTime: fiveHoursAhead },
+        { modelId: 'gemini-3.8-flash-tiered', remainingFraction: 0.92, resetTime: fiveHoursAhead },
+        { modelId: 'gemini-2.5-pro', remainingFraction: 0.92, resetTime: fiveHoursAhead },
+        { modelId: 'unknown-model', remainingFraction: 0.1, resetTime: fiveHoursAhead },
+      ] }
+    } else {
+      body = { currentTier: { id: 'pro' } }
+    }
+    return new Response(JSON.stringify({ status_code: 200, body: JSON.stringify(body) }), { status: 200 })
+  }
+  const harness = createContext({ providers: { CLIProxyAPI: managedProfile() } }, 'management-key')
+  try {
+    const handle = applyCpaAddon(harness.ctx, {
+      endpoint: 'http://127.0.0.1:8317', providerId: 'CLIProxyAPI', managementKeyEnv: 'CPA_MANAGEMENT_KEY',
+      timeoutMs: 8000, refreshIntervalMs: 300000, registerDiscovery: false,
+    })
+    const view = await handle.refreshAccounts(new AbortController().signal)
+    const windows = view.accounts[0].quota.windows
+    assert.deepEqual(windows.map(({ group, window, remaining }) => ({ group, window, remaining })), [
+      { group: 'Claude and GPT models', window: 'five_hour', remaining: 75 },
+      { group: 'Claude and GPT models', window: 'weekly', remaining: 50 },
+      { group: 'Gemini Models', window: 'five_hour', remaining: 92 },
+    ])
+    assert.equal(view.accounts[0].quota.remaining, 50)
+  } finally {
+    harness.dispose()
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('automatic quota refresh continues when the model catalog endpoint fails', async () => {
   const previousFetch = globalThis.fetch
   let accountReads = 0

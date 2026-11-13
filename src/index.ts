@@ -835,9 +835,22 @@ async function fetchAccountQuota(
       'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
       'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
     ]
+    // The summary endpoint only reports the pools Google chooses to pool for
+    // this account: a Pro account gets "Claude and GPT models" alone, so the
+    // Gemini and Argon pools are absent and the card claims 100% while the
+    // Gemini quota the user actually spends is almost gone. Those pools are
+    // reported per model by `retrieveUserQuota`, so both are fetched and
+    // merged (see antigravityModelPoolWindows).
+    const ANTIGRAVITY_MODEL_QUOTA_URLS = [
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',
+      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',
+    ]
     const quotaRequest = account.projectId === undefined
       ? Promise.resolve<unknown>({})
       : fetchAntigravityQuotaSummary(ANTIGRAVITY_QUOTA_URLS, config, readCredential, account, headers, signal)
+    const modelQuotaRequest = account.projectId === undefined
+      ? Promise.resolve<unknown>({})
+      : fetchAntigravityQuotaSummary(ANTIGRAVITY_MODEL_QUOTA_URLS, config, readCredential, account, headers, signal)
     const subscriptionRequest = callUpstream(
       config,
       readCredential,
@@ -848,10 +861,11 @@ async function fetchAccountQuota(
       JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
       signal,
     )
-    const [quotaResult, subscriptionResult] = await Promise.allSettled([quotaRequest, subscriptionRequest])
+    const [quotaResult, subscriptionResult, modelQuotaResult] = await Promise.allSettled([quotaRequest, subscriptionRequest, modelQuotaRequest])
     return parseAntigravityQuota(
       quotaResult.status === 'fulfilled' ? quotaResult.value : {},
       subscriptionResult.status === 'fulfilled' ? subscriptionResult.value : {},
+      modelQuotaResult.status === 'fulfilled' ? modelQuotaResult.value : {},
     )
   }
   if (provider.includes('codex')) {
@@ -1153,10 +1167,10 @@ function codexWindowKey(seconds: number | undefined, fallback = 'quota', label?:
   return fallback
 }
 
-function parseAntigravityQuota(body: unknown, subscriptionBody: unknown): AccountQuotaResult {
+function parseAntigravityQuota(body: unknown, subscriptionBody: unknown, modelQuotaBody?: unknown): AccountQuotaResult {
   const root = valueObject(body)
   const subscription = valueObject(subscriptionBody)
-  const windows = root === undefined || !Array.isArray(root.groups)
+  const summaryWindows: CpaQuotaWindow[] = root === undefined || !Array.isArray(root.groups)
     ? []
     : root.groups.flatMap(groupValue => {
       const group = valueObject(groupValue)
@@ -1181,6 +1195,10 @@ function parseAntigravityQuota(body: unknown, subscriptionBody: unknown): Accoun
         }]
       })
     })
+  const windows = orderAntigravityWindows([
+    ...summaryWindows,
+    ...antigravityModelPoolWindows(modelQuotaBody, summaryWindows),
+  ])
   const remaining = windows.length === 0 ? undefined : Math.min(...windows.map(window => window.remaining))
   const quota = remaining === undefined
     ? undefined
@@ -1203,6 +1221,85 @@ function antigravityWindow(bucket: Record<string, unknown>): string | undefined 
   if (value.includes('5h') || value.includes('five hour') || value.includes('five-hour')) return 'five_hour'
   if (value.includes('week')) return 'weekly'
   return stringValue(bucket.window)?.trim().toLowerCase().replace(/[-\s]+/g, '_')
+}
+
+// The pools Antigravity pools its models into, with the group names the quota
+// summary uses for the same pool. A per-model quota bucket names only its model.
+const ANTIGRAVITY_MODEL_POOLS: ReadonlyArray<readonly [string, RegExp]> = [
+  ['Gemini Models', /^(?:gemini|chat_)/u],
+  ['Claude and GPT models', /^(?:claude|gpt)/u],
+]
+
+/**
+ * Pools the summary endpoint left out, rebuilt from the per-model quota.
+ *
+ * `retrieveUserQuota` answers one bucket per model carrying the model's binding
+ * window; models of one pool share that window's fraction, so the model closest
+ * to its limit describes the pool. A pool the summary already described keeps
+ * the summary's window kinds — it reports both the weekly and the five-hour
+ * window, which the per-model buckets do not.
+ */
+function antigravityModelPoolWindows(body: unknown, covered: readonly CpaQuotaWindow[]): CpaQuotaWindow[] {
+  const root = valueObject(body)
+  const buckets = root !== undefined && Array.isArray(root.buckets) ? root.buckets : []
+  if (buckets.length === 0) return []
+  const known = new Set(covered.map(window => (window.group ?? '').trim().toLowerCase()).filter(group => group !== ''))
+  const pools = new Map<string, { remaining: number, resetAt?: string }>()
+  for (const bucketValue of buckets) {
+    const bucket = valueObject(bucketValue)
+    if (bucket === undefined) continue
+    const modelId = (stringValue(bucket.modelId) ?? '').toLowerCase()
+    const fraction = firstNumber(bucket.remainingFraction, bucket.remaining_fraction)
+    const pool = ANTIGRAVITY_MODEL_POOLS.find(([, pattern]) => pattern.test(modelId))?.[0]
+    if (modelId === '' || fraction === undefined || pool === undefined) continue
+    const remaining = Math.max(0, Math.min(100, fraction <= 1 ? fraction * 100 : fraction))
+    const resetAt = stringValue(bucket.resetTime) ?? stringValue(bucket.reset_at)
+    const current = pools.get(pool)
+    if (current === undefined || remaining < current.remaining) {
+      pools.set(pool, { remaining, ...resetAt === undefined ? {} : { resetAt } })
+    }
+  }
+  const windows: CpaQuotaWindow[] = []
+  for (const [pool, value] of pools) {
+    if (known.has(pool.toLowerCase())) continue
+    const window = antigravityModelWindow(value.resetAt)
+    if (window === undefined) continue
+    windows.push({
+      window,
+      group: pool,
+      remaining: value.remaining,
+      total: 100,
+      unit: '%',
+      exceeded: value.remaining <= 0,
+      ...value.resetAt === undefined ? {} : { resetAt: value.resetAt },
+    })
+  }
+  return windows
+}
+
+/** The window a per-model bucket describes, told apart by its reset horizon. */
+function antigravityModelWindow(resetAt: string | undefined): string | undefined {
+  if (resetAt === undefined) return undefined
+  const at = Date.parse(resetAt)
+  if (Number.isNaN(at)) return undefined
+  const hours = (at - Date.now()) / 3_600_000
+  if (hours <= 6) return 'five_hour'
+  if (hours <= 24 * 8) return 'weekly'
+  return undefined
+}
+
+// Each pool stays contiguous, and the five-hour window leads inside a pool.
+function orderAntigravityWindows(windows: readonly CpaQuotaWindow[]): CpaQuotaWindow[] {
+  const rank = (kind: string): number => kind === 'five_hour' ? 0 : kind === 'weekly' ? 1 : kind === 'monthly' ? 2 : 3
+  const ordered: CpaQuotaWindow[] = []
+  let index = 0
+  while (index < windows.length) {
+    let end = index
+    while (end + 1 < windows.length && (windows[end + 1].group ?? '') === (windows[index].group ?? '')) end++
+    ordered.push(...windows.slice(index, end + 1).sort((left, right) => rank(left.window) - rank(right.window)))
+    index = end + 1
+  }
+  return ordered
 }
 
 function antigravityPlan(tier: Record<string, unknown> | undefined): string | undefined {
